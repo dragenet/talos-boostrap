@@ -1,0 +1,154 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["AGENTS.md", "CLAUDE.md"],
+  "model": "openai/gpt-5.4-mini-fast",
+  "default_agent": "build",
+  "share": "disabled",
+  "small_model": "opencode-go/minimax-m3",
+  "skills": {
+    "paths": [".opencode/skills"]
+  },
+  "permission": {
+    "read": {
+      "*": "allow",
+      "*.env": "deny",
+      "*.env.*": "deny",
+      "*.env.example": "allow",
+      "infra/talos/secrets/**": "deny",
+      "*.sops.decrypted.*": "deny"
+    },
+    "glob": "allow",
+    "grep": "allow",
+    "list": "allow",
+    "edit": "ask",
+    "bash": {
+      "*": "ask",
+      "* || *": "allow",
+      "* && *": "allow",
+      "git status*": "allow",
+      "git diff*": "allow",
+      "git log*": "allow",
+      "git branch*": "allow",
+      "git stash list*": "allow",
+      "opencode models*": "allow",
+      "graphify query*": "allow",
+      "graphify explain*": "allow",
+      "graphify path*": "allow",
+      "graphify update*": "allow",
+      "graphify status*": "allow",
+      "ansible-lint*": "allow",
+      "kustomize build*": "allow",
+      "flux build*": "allow",
+      "helm lint*": "allow",
+      "helm template*": "allow",
+      "yamllint*": "allow",
+      "ansible-playbook *": "ask",
+      "sops *": "ask",
+      "hcloud *": "ask",
+      "talosctl *": "ask",
+      "kubectl *": "ask",
+      "flux reconcile *": "ask",
+      "git add*": "ask",
+      "git commit*": "ask",
+      "git push*": "deny",
+      "git reset --hard*": "deny",
+      "git checkout --*": "deny",
+      "rm -rf *": "deny"
+    },
+    "external_directory": {
+      "*": "ask",
+      "~/Projects/infra/kube1/**": "allow"
+    },
+    "task": {
+      "*": "ask"
+    },
+    "skill": {
+      "*": "allow"
+    },
+    "webfetch": "allow",
+    "websearch": "allow",
+    "question": "allow",
+    "todowrite": "allow",
+    "doom_loop": "ask"
+  },
+  "agent": {
+    "build": {
+      "prompt": "You are the kube1 OpenCode orchestrator. Keep your always-on behavior simple: delegate by default, use graphify first for repo questions, and prefer project subagents over broad work in the main session. Prefer graphify and the fast-context agents every time you need repo context, not just at the start. For any task beyond trivial, load the `kube1-orchestration` skill and call `fast-plan` first unless the need for a durable `task-planner` plan is already obvious. Treat `fast-plan` as a router, not as an investigator; if more context is needed, let it call context subagents. Prefer multiple small, focused subagent tasks in parallel over one large bundled subagent task when the work can be split safely. Do not use `Read` or `Glob` in the main session until graphify and, when needed, `repo-fast-context` have narrowed the files for that specific question. Prefer opencode LSP tools for semantic navigation/refactors when available. Parallelize independent subagents when possible and preserve dependencies. Do not use `explore` for kube1 repo questions.",
+      "permission": {
+        "bash": {
+          "*": "ask",
+          "graphify query*": "allow",
+          "graphify explain*": "allow",
+          "graphify path*": "allow",
+          "graphify update*": "allow",
+          "graphify status*": "allow",
+          "echo *": "deny",
+          "rg *": "deny",
+          "* rg *": "deny",
+          "grep *": "deny",
+          "find *": "deny",
+          "* | head*": "deny",
+          "*&& rg *": "deny"
+        },
+        "task": {
+          "*": "deny",
+          "fast-plan": "allow",
+          "task-planner": "allow",
+          "repo-fast-context": "allow",
+          "web-fast-context": "allow",
+          "ansible-implementor": "allow",
+          "k8s-implementor": "allow",
+          "ansible-reviewer": "allow",
+          "k8s-reviewer": "allow",
+          "docs-writer": "allow",
+          "adr-writer": "allow",
+          "report-writer": "allow",
+          "git-commit": "allow",
+          "general": "ask"
+        }
+      }
+    },
+    "plan": {
+      "prompt": "You are the kube1 planning orchestrator. Stay read-only. Use `kube1-orchestration` for routing rules. For anything beyond trivial, call `fast-plan` first unless it is already obvious that `task-planner` is needed for a durable multi-step plan. Keep the primary session small: every time you need repo context, use graphify first and then `repo-fast-context` if more narrowing is needed. Do not use `Read` or `Glob` in the main session until graphify and, when needed, `repo-fast-context` have narrowed the files for that specific question. Prefer opencode LSP tools for semantic navigation when available. Parallelize independent context/review subagents when possible. Do not implement changes in plan mode and do not use `explore` for kube1 repo questions.",
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "ask",
+          "graphify query*": "allow",
+          "graphify explain*": "allow",
+          "graphify path*": "allow",
+          "graphify update*": "allow",
+          "graphify status*": "allow",
+          "echo *": "deny",
+          "rg *": "deny",
+          "* rg *": "deny",
+          "grep *": "deny",
+          "find *": "deny",
+          "* | head*": "deny",
+          "*&& rg *": "deny"
+        },
+        "task": {
+          "*": "deny",
+          "fast-plan": "allow",
+          "task-planner": "allow",
+          "repo-fast-context": "allow",
+          "web-fast-context": "allow",
+          "ansible-reviewer": "allow",
+          "k8s-reviewer": "allow",
+          "git-commit": "allow"
+        }
+      }
+    },
+    "explore": {
+      "disable": true
+    }
+  },
+  "watcher": {
+    "ignore": ["graphify-out/**", "infra/ansible/.collections/**", "infra/talos/secrets/**"]
+  },
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "tail_turns": 6
+  }
+}

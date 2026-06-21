@@ -1,0 +1,6 @@
+---
+creation_rules:
+  - path_regex: infra/ansible/inventories/.*/group_vars/.*\.sops\.ya?ml$
+    age: age1msj34ws4vhrdtdew6tt65f76mvfacegs06dvxr8wfghs3hfh6eqqkax93f
+# Note: the regex stays generic (matches any provider's group_vars/<provider>.sops.yaml,
+# e.g. hcloud.sops.yaml) so adding a second provider's secrets later needs no edit here.

@@ -1,0 +1,12 @@
+infra/talos/secrets/
+infra/talos/schematic_id
+infra/ansible/.collections/
+*.sops.decrypted.*
+
+# Tooling artifacts
+graphify-out/
+.opencode/*
+!.opencode/agents/
+!.opencode/agents/**
+!.opencode/skills/
+!.opencode/skills/**
