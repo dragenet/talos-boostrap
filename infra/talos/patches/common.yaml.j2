@@ -1,0 +1,14 @@
+machine:
+  install:
+    # talos_installer_image is set at runtime by the talos_schematic role,
+    # derived from talos_extensions + talos_version via factory.talos.dev.
+    image: {{ talos_installer_image }}
+{% if cluster_talos_cert_sans | length > 0 %}
+  # Extra SANs for the Talos API certificate (port 50000).
+  # Talos already adds the node's own IPs; list here anything additional
+  # (Tailscale IPs, DNS aliases) you use to reach talosctl from outside.
+  certSANs:
+{% for san in cluster_talos_cert_sans %}
+    - {{ san }}
+{% endfor %}
+{% endif %}

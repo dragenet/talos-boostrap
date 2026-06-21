@@ -1,0 +1,159 @@
+---
+# api_token is supplied for all hetzner.hcloud.* tasks via the
+# group/hetzner.hcloud.all module_defaults in playbooks/providers/hcloud/provision-infra.yml;
+# ansible-lint can't see across that, hence the noqa below (and on every hcloud task).
+
+- name: Create private network # noqa: args[module]
+  hetzner.hcloud.network:
+    name: "{{ hcloud_private_network_name }}"
+    ip_range: "{{ hcloud_private_network_cidr }}"
+    state: present
+
+- name: Create subnet # noqa: args[module]
+  hetzner.hcloud.subnetwork:
+    network: "{{ hcloud_private_network_name }}"
+    ip_range: "{{ hcloud_private_subnet_cidr }}"
+    network_zone: eu-central
+    type: cloud
+    state: present
+
+- name: Manage firewall
+  ansible.builtin.import_tasks: firewall.yml
+
+# Spread placement group ensures each node lands on a different physical host.
+# Without this, all 3 could share one physical machine — defeating HA entirely.
+- name: Create spread placement group # noqa: args[module]
+  hetzner.hcloud.placement_group:
+    name: "{{ hcloud_private_network_name }}-spread"
+    type: spread
+    state: present
+
+# Build the full node list from hcloud_topology counts. Roles are ordered:
+# controlplane → hybrid → worker, so IPs are assigned deterministically.
+# Private IPs: subnet_base + hcloud_servers_ip_offset + global_index.
+# Names: {{ cluster_name }}-{{ node_role_short[role] }}{{ n }}
+# Example with topology {hybrid: 3}, offset 11: kube1-hb1→10.0.0.11, kube1-hb2→10.0.0.12, kube1-hb3→10.0.0.13
+- name: Build node list from topology
+  ansible.builtin.set_fact:
+    hcloud_servers_node_list: >-
+      {%- set nodes = [] -%}
+      {%- set ns = namespace(ip=hcloud_servers_ip_offset) -%}
+      {%- set subnet_prefix = hcloud_private_subnet_cidr.split('/')[0].split('.')[:-1] | join('.') -%}
+      {%- for role in ['controlplane', 'hybrid', 'worker'] -%}
+        {%- for n in range(1, (hcloud_topology[role] | default(0)) + 1) -%}
+          {%- set _ = nodes.append({
+               'name': cluster_name ~ '-' ~ node_role_short[role] ~ n,
+               'role': role,
+               'private_ip': subnet_prefix ~ '.' ~ ns.ip
+             }) -%}
+          {%- set ns.ip = ns.ip + 1 -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ nodes }}
+
+# Check which servers in the topology already exist so type resolution and
+# server creation are only attempted when at least one server is missing.
+# Running type resolution against existing infrastructure is wasteful and fails
+# when Hetzner has temporarily sold out a type (existing servers are unaffected).
+- name: Check which servers already exist # noqa: args[module]
+  hetzner.hcloud.server_info:
+    name: "{{ item.name }}"
+  register: hcloud_servers_existence
+  loop: "{{ hcloud_servers_node_list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Set missing server list
+  ansible.builtin.set_fact:
+    hcloud_servers_missing: >-
+      {{ hcloud_servers_existence.results
+         | selectattr('hcloud_server_info', 'equalto', [])
+         | map(attribute='item') | list }}
+
+# Type resolution and server creation only run when servers are actually missing.
+# hcloud_server_types_per_role is optional: roles not listed fall back to hcloud_server_types.
+- name: Resolve server types and create missing servers
+  when: hcloud_servers_missing | length > 0
+  block:
+    - name: Build per-role server type candidates
+      ansible.builtin.set_fact:
+        hcloud_servers_role_candidates: >-
+          {%- set result = {} -%}
+          {%- for node in hcloud_servers_missing -%}
+            {%- if node.role not in result -%}
+              {%- set candidates = (hcloud_server_types_per_role | default({}))[node.role]
+                                   | default(hcloud_server_types) -%}
+              {%- set _ = result.update({node.role: candidates}) -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {{ result }}
+
+    - name: Query availability of candidate server types # noqa: args[module]
+      hetzner.hcloud.server_type_info:
+        name: "{{ item }}"
+      register: hcloud_servers_type_query
+      loop: "{{ hcloud_servers_role_candidates.values() | flatten | unique | list }}"
+
+    - name: Build server type availability map
+      ansible.builtin.set_fact:
+        hcloud_servers_type_available: >-
+          {%- set avail = {} -%}
+          {%- for result in hcloud_servers_type_query.results -%}
+            {%- if result.hcloud_server_type_info | length > 0 -%}
+              {%- set info = result.hcloud_server_type_info[0] -%}
+              {%- set loc = info.locations | selectattr('name', '==', hcloud_location) | list -%}
+              {%- set _ = avail.update({info.name: loc | length > 0 and loc[0].available}) -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {{ avail }}
+
+    # intersect() preserves the priority order of the candidates list.
+    - name: Resolve first available server type per role
+      ansible.builtin.set_fact:
+        hcloud_servers_resolved_types: >-
+          {%- set available = hcloud_servers_type_available
+                | dict2items | selectattr('value') | map(attribute='key') | list -%}
+          {%- set result = {} -%}
+          {%- for role, candidates in hcloud_servers_role_candidates.items() -%}
+            {%- set _ = result.update({role: candidates | intersect(available) | first | default('')}) -%}
+          {%- endfor -%}
+          {{ result }}
+
+    - name: Fail if any missing server's role has no available type
+      ansible.builtin.fail:
+        msg: >-
+          No server type available for role '{{ item.key }}' from candidates
+          {{ hcloud_servers_role_candidates[item.key] }} in {{ hcloud_location }}.
+      when: item.value == ''
+      loop: "{{ hcloud_servers_resolved_types | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+
+    # Labels drive the dynamic inventory (inventories/providers/hcloud/hcloud.yml):
+    #   label_selector: cluster={{ cluster_name }} picks up servers for this cluster.
+    #   keyed_groups on hcloud_labels.role builds the controlplane/hybrid/worker groups.
+    # node_role uses full names (controlplane / hybrid / worker) — never the short code.
+    - name: Create missing servers # noqa: args[module]
+      hetzner.hcloud.server:
+        name: "{{ item.name }}"
+        server_type: "{{ hcloud_servers_resolved_types[item.role] }}"
+        image: "{{ hcloud_talos_image }}"
+        location: "{{ hcloud_location }}"
+        placement_group: "{{ hcloud_private_network_name }}-spread"
+        firewalls:
+          - "{{ hcloud_firewall_name }}"
+        enable_ipv4: true
+        enable_ipv6: false
+        labels:
+          cluster: "{{ cluster_name }}"
+          role: "{{ item.role }}"
+        state: present
+      loop: "{{ hcloud_servers_missing }}"
+
+- name: Attach servers to private network with fixed IPs # noqa: args[module]
+  hetzner.hcloud.server_network:
+    server: "{{ item.name }}"
+    network: "{{ hcloud_private_network_name }}"
+    ip: "{{ item.private_ip }}"
+    state: present
+  loop: "{{ hcloud_servers_node_list }}"

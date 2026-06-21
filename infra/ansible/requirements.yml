@@ -1,0 +1,12 @@
+collections:
+  # Pinned exactly per CLAUDE.md "Pin versions". Bumping requires:
+  #   ansible-galaxy collection install -r requirements.yml --force
+  # followed by re-running ansible-lint and --check --diff.
+  - name: hetzner.hcloud
+    version: "6.9.0"
+  # Provides the sops vars plugin (decrypts group_vars/*.sops.yaml automatically) and
+  # the sops lookup plugin (used for the dynamic inventory token, see hcloud.yml).
+  # >=1.9.0 required for the lookup's `extract` parameter; >=2.0.0 requires
+  # ansible-core >=2.15 (we run 2.21).
+  - name: community.sops
+    version: "2.3.0"

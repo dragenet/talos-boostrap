@@ -1,0 +1,8 @@
+---
+# Vendored collections (installed via collections_path in ansible.cfg, see M3) ship
+# their own test suites that aren't relevant to this repo's lint baseline.
+exclude_paths:
+  - .cache/
+  - .collections/
+  # SOPS-encrypted ciphertext (long base64/MAC lines) — not Ansible content to lint.
+  - inventories/**/*.sops.yaml

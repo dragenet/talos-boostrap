@@ -1,0 +1,15 @@
+---
+talos_version: v1.13.3
+
+# System extensions to include in the Talos image. The talos_schematic role
+# resolves these into a deterministic schematic ID via factory.talos.dev.
+# Adding or removing an extension here triggers a factory POST on the next run.
+talos_extensions:
+  - siderolabs/qemu-guest-agent
+
+# Paths to the Talos working directories. Anchored to playbook_dir, which is
+# correct for playbooks at infra/ansible/playbooks/<name>.yml depth.
+# The talos_schematic role is the exception — it anchors its cache path to
+# role_path internally, so it works from any playbook depth.
+talos_secrets_dir: "{{ playbook_dir }}/../../talos/secrets"
+talos_patches_dir: "{{ playbook_dir }}/../../talos/patches"

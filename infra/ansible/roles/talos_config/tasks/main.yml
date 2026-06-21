@@ -1,0 +1,300 @@
+---
+# Tasks: generate machine configs per node role, apply to each node,
+# bootstrap etcd, wait for health, converge installer image.
+
+- name: Ensure Talos secrets directory exists
+  ansible.builtin.file:
+    path: "{{ talos_config_secrets_dir }}"
+    state: directory
+    mode: "0700"
+
+# common-patch.yaml: machine.install.image — applied to ALL node types at gen time.
+- name: Render common machine config patch
+  ansible.builtin.template:
+    src: "{{ talos_config_patches_dir }}/common.yaml.j2"
+    dest: "{{ talos_config_rendered_common_patch }}"
+    mode: "0600"
+
+# controlplane-patch.yaml: VIP + cluster CNI/proxy — applied only to the
+# controlplane base config at gen time. Workers get neither VIP nor kube-proxy
+# disabled (they don't join etcd, so the cluster section isn't relevant).
+- name: Render control-plane machine config patch
+  ansible.builtin.template:
+    src: "{{ talos_config_patches_dir }}/controlplane.yaml.j2"
+    dest: "{{ talos_config_rendered_controlplane_patch }}"
+    mode: "0600"
+
+- name: Generate Talos secrets bundle
+  ansible.builtin.command:
+    argv:
+      - talosctl
+      - gen
+      - secrets
+      - -o
+      - "{{ talos_config_secrets_file }}"
+    creates: "{{ talos_config_secrets_file }}"
+
+# Generates controlplane.yaml, worker.yaml, and talosconfig into secrets_dir.
+# --config-patch (common) applies to all node types: sets machine.install.image.
+# --config-patch-control-plane applies only to the controlplane base:
+#   sets VIP interface and disables CNI/kube-proxy (Cilium takes those over).
+# Per-node customisation (hostname, nodeLabels, allowSchedulingOnControlPlanes)
+# is applied at apply-config time via --config-patch so each node gets its own.
+#
+# creates: guards re-generation; delete controlplane.yaml to force a regeneration
+# (e.g. after rotating secrets or bumping kubernetes_version).
+- name: Generate Talos machine configs
+  ansible.builtin.command:
+    argv:
+      - talosctl
+      - gen
+      - config
+      - "{{ cluster_name }}"
+      - "{{ cluster_endpoint }}"
+      - --with-secrets
+      - "{{ talos_config_secrets_file }}"
+      - --output-dir
+      - "{{ talos_config_secrets_dir }}"
+      - --kubernetes-version
+      - "{{ talos_config_kubernetes_version }}"
+      - --config-patch
+      - "@{{ talos_config_rendered_common_patch }}"
+      - --config-patch-control-plane
+      - "@{{ talos_config_rendered_controlplane_patch }}"
+    creates: "{{ talos_config_controlplane_config }}"
+
+# talosctl gen config writes 0644; these embed the cluster CA and client
+# certs, so tighten them to owner-only (the secrets dir is already 0700).
+- name: Restrict permissions on generated Talos configs
+  ansible.builtin.file:
+    path: "{{ item }}"
+    mode: "0600"
+  loop:
+    - "{{ talos_config_controlplane_config }}"
+    - "{{ talos_config_worker_config }}"
+    - "{{ talos_config_talosconfig }}"
+
+# gen config defaults talosconfig endpoints to the cluster endpoint host (the
+# private VIP), which isn't reachable from outside the Hetzner private network.
+# Point it at the nodes' public IPs instead.
+- name: Set talosconfig endpoints to node public IPs
+  ansible.builtin.command:
+    argv: "{{ ['talosctl', '--talosconfig', talos_config_talosconfig, 'config', 'endpoint'] + talos_config_node_ips }}"
+  changed_when: false
+
+- name: Set default talosconfig node to bootstrap node
+  ansible.builtin.command:
+    argv:
+      - talosctl
+      - --talosconfig
+      - "{{ talos_config_talosconfig }}"
+      - config
+      - node
+      - "{{ hostvars[talos_config_bootstrap_node].node_public_ip }}"
+  changed_when: false
+
+# Maintenance-mode nodes reject this (rc!=0, "certificate signed by unknown
+# authority" — no config/CA yet). Already-configured nodes normally succeed,
+# but a transient apid timeout can also produce rc!=0; retry a few times so
+# that doesn't get misread as "still in maintenance mode" below.
+- name: Check if machine config already applied
+  ansible.builtin.command:
+    argv:
+      - talosctl
+      - --talosconfig
+      - "{{ talos_config_talosconfig }}"
+      - -n
+      - "{{ hostvars[item].node_public_ip }}"
+      - get
+      - machineconfig
+  register: talos_config_mc_check
+  until: talos_config_mc_check.rc == 0 or 'certificate signed by unknown authority' in talos_config_mc_check.stderr
+  retries: 3
+  delay: 5
+  failed_when: false
+  changed_when: false
+  loop: "{{ talos_config_all_nodes }}"
+
+# Per-node inline patches applied at apply-config time:
+#   HostnameConfig: sets the node hostname (Talos uses this for the Kubernetes
+#     node name; without it all nodes would default to a generic name).
+#   nodeLabels: sets node-role.kubernetes.io/<role>="" so Kubernetes sees the
+#     correct role label. Talos applies this via its node controller, which can
+#     set restricted node-role.kubernetes.io/* labels that kubelet cannot set.
+#   allowSchedulingOnControlPlanes (hybrid only): removes the
+#     node-role.kubernetes.io/control-plane:NoSchedule taint so workloads
+#     can schedule on hybrid nodes. Pure controlplane nodes keep the taint.
+- name: Apply machine config to nodes in maintenance mode
+  ansible.builtin.command:
+    argv: >-
+      {{ (['talosctl', 'apply-config', '--insecure',
+           '-n', hostvars[item.item].node_public_ip,
+           '--file',
+           talos_config_controlplane_config
+           if hostvars[item.item].node_role in ['controlplane', 'hybrid']
+           else talos_config_worker_config,
+           '--config-patch',
+           '{"apiVersion":"v1alpha1","kind":"HostnameConfig","hostname":"' ~ item.item ~ '","auto":"off"}',
+           '--config-patch',
+           '{"machine":{"nodeLabels":{"node-role.kubernetes.io/' ~ hostvars[item.item].node_role ~ '":""}}}']
+          + (['--config-patch', '{"cluster":{"allowSchedulingOnControlPlanes":true}}']
+             if hostvars[item.item].node_role == 'hybrid' else [])) }}
+  loop: "{{ talos_config_mc_check.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.rc != 0 and 'certificate signed by unknown authority' in item.stderr
+  changed_when: true
+
+# Re-apply machine config to already-running nodes so that re-running
+# bootstrap-talos.yml picks up config changes (Kubernetes version bump,
+# extensions change, nodeLabels update, etc.).
+# --mode=no-reboot: applies live where possible. If a change requires a reboot
+# (e.g. kernel param), Talos will report it and the operator should then run
+# upgrade-talos.yml or reboot manually.
+# apply-config produces no diff output, so changed_when is unconditional here.
+- name: Re-apply machine config to running nodes
+  ansible.builtin.command:
+    argv: >-
+      {{ (['talosctl', 'apply-config',
+           '--mode', 'no-reboot',
+           '-n', hostvars[item.item].node_public_ip,
+           '--talosconfig', talos_config_talosconfig,
+           '--file',
+           talos_config_controlplane_config
+           if hostvars[item.item].node_role in ['controlplane', 'hybrid']
+           else talos_config_worker_config,
+           '--config-patch',
+           '{"apiVersion":"v1alpha1","kind":"HostnameConfig","hostname":"' ~ item.item ~ '","auto":"off"}',
+           '--config-patch',
+           '{"machine":{"nodeLabels":{"node-role.kubernetes.io/' ~ hostvars[item.item].node_role ~ '":""}}}']
+          + (['--config-patch', '{"cluster":{"allowSchedulingOnControlPlanes":true}}']
+             if hostvars[item.item].node_role == 'hybrid' else [])) }}
+  loop: "{{ talos_config_mc_check.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.rc == 0
+  changed_when: true
+
+- name: Bootstrap etcd
+  ansible.builtin.command:
+    argv:
+      - talosctl
+      - bootstrap
+      - -n
+      - "{{ hostvars[talos_config_bootstrap_node].node_public_ip }}"
+      - --talosconfig
+      - "{{ talos_config_talosconfig }}"
+  register: talos_config_bootstrap_result
+  failed_when: false
+  changed_when: talos_config_bootstrap_result.rc == 0
+
+- name: Show bootstrap result if it failed (likely already bootstrapped)
+  ansible.builtin.debug:
+    var: talos_config_bootstrap_result.stderr
+  when: talos_config_bootstrap_result.rc != 0
+
+# No -n/--control-plane-nodes: etcd registers members by their private IPs
+# (10.0.0.x), not the public IPs used to reach apid, so passing public IPs to
+# --control-plane-nodes fails with "etcd member ips [...] are not subset of
+# control plane node ips [...]". Without overrides, talosctl uses the
+# talosconfig's default node/endpoints, discovers the other members via etcd,
+# and proxies per-node checks through that node's apid.
+# talosctl health always tries to direct-dial discovered etcd member IPs
+# (private network) — unreachable from outside Hetzner's private network.
+# Replace it with targeted commands that route through the public-IP endpoint.
+
+# etcd status proxies through the bootstrap node's public IP and checks quorum.
+- name: Wait for etcd to be healthy
+  ansible.builtin.command:
+    argv:
+      - talosctl
+      - -n
+      - "{{ hostvars[talos_config_bootstrap_node].node_public_ip }}"
+      - --talosconfig
+      - "{{ talos_config_talosconfig }}"
+      - etcd
+      - status
+  register: talos_config_etcd_status
+  until: talos_config_etcd_status.rc == 0
+  retries: 30
+  delay: 20
+  changed_when: false
+
+# Confirms apid is up on each node and the node has finished booting.
+- name: Wait for all nodes to be reachable via talosctl
+  ansible.builtin.command:
+    argv:
+      - talosctl
+      - -n
+      - "{{ item }}"
+      - --talosconfig
+      - "{{ talos_config_talosconfig }}"
+      - version
+  register: talos_config_node_reachable
+  until: talos_config_node_reachable.rc == 0
+  retries: 30
+  delay: 20
+  loop: "{{ talos_config_node_ips }}"
+  changed_when: false
+
+- name: Fetch kubeconfig
+  ansible.builtin.command:
+    argv:
+      - talosctl
+      - kubeconfig
+      - "{{ talos_config_kubeconfig }}"
+      - -n
+      - "{{ hostvars[talos_config_bootstrap_node].node_public_ip }}"
+      - --talosconfig
+      - "{{ talos_config_talosconfig }}"
+      - --force
+  changed_when: true
+
+- name: Restrict permissions on kubeconfig
+  ansible.builtin.file:
+    path: "{{ talos_config_kubeconfig }}"
+    mode: "0600"
+
+# Image convergence: check every node's running installer image and upgrade
+# any that don't match the factory target. Key for manual nodes booted from a
+# generic Talos ISO. hcloud nodes that booted from the snapshot are normally a
+# no-op. talosctl upgrade is etcd-quorum aware and reboots the node.
+# For intentional version upgrades (talos_version / talos_extensions change),
+# use upgrade-talos.yml which sequences one node at a time with health checks.
+- name: Read running installer image from each node
+  ansible.builtin.command:
+    argv:
+      - talosctl
+      - get
+      - machineconfig
+      - --nodes
+      - "{{ hostvars[item].node_public_ip }}"
+      - --talosconfig
+      - "{{ talos_config_talosconfig }}"
+      - -o
+      - "jsonpath={.spec.machine.install.image}"
+  register: talos_config_running_images
+  loop: "{{ talos_config_all_nodes }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Upgrade node to factory installer image if running image differs
+  ansible.builtin.command:
+    argv:
+      - talosctl
+      - upgrade
+      - --nodes
+      - "{{ hostvars[item.item].node_public_ip }}"
+      - --talosconfig
+      - "{{ talos_config_talosconfig }}"
+      - --image
+      - "{{ talos_installer_image }}"
+      - --wait
+  loop: "{{ talos_config_running_images.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.rc == 0 and (item.stdout | trim) != talos_installer_image
+  changed_when: true

@@ -1,0 +1,28 @@
+---
+# Dynamic inventory: queries the Hetzner Cloud API for servers labeled for this
+# cluster. Filename must end in hcloud.yml/.yaml for the plugin to claim it.
+# Composes node_public_ip and node_private_ip directly from Hetzner hostvars
+# (hcloud_ipv4, hcloud_private_ipv4) — no static hosts.yml needed.
+plugin: hetzner.hcloud.hcloud
+# Token read from the SOPS-encrypted hcloud secrets file so there's a single
+# source of truth. Requires community.sops >= 1.9.0 for the `extract` param.
+token: "{{ lookup('community.sops.sops', 'inventories/providers/hcloud/group_vars/all/hcloud.sops.yaml', extract='[\"hcloud_token\"]') }}"
+label_selector: "cluster=kube1"
+# network: filters the inventory to servers attached to this network AND
+# populates the hcloud_private_ipv4 hostvar. Without it, the compose below
+# would set node_private_ip to an empty value — silently violating the
+# provider contract (docs/adding-a-provider.md) which requires every node
+# to expose node_private_ip. Hardcoded like label_selector above; the
+# inventory plugin loads before group_vars, so Jinja refs to hcloud_*
+# are not resolvable here (only lookup() plugins work, as used for token).
+network: kube1
+# Group servers by their role label (full names: controlplane, hybrid, worker).
+# A server labeled role=hybrid lands in the `hybrid` group, matching hosts.yml.
+keyed_groups:
+  - key: hcloud_labels.role
+    prefix: ""
+    separator: ""
+compose:
+  node_public_ip: hcloud_ipv4
+  node_private_ip: hcloud_private_ipv4
+  node_role: hcloud_labels.role

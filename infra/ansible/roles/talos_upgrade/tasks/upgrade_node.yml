@@ -1,0 +1,61 @@
+---
+# Per-node upgrade sequence, called via include_tasks loop in main.yml.
+# talos_upgrade_current_node is the loop_var set by the caller.
+
+- name: Read running installer image on {{ talos_upgrade_current_node }}
+  ansible.builtin.command:
+    argv:
+      - talosctl
+      - get
+      - machineconfig
+      - --nodes
+      - "{{ hostvars[talos_upgrade_current_node].node_public_ip }}"
+      - --talosconfig
+      - "{{ talos_upgrade_talosconfig }}"
+      - -o
+      - "jsonpath={.spec.machine.install.image}"
+  register: talos_upgrade_running_image
+  changed_when: false
+  failed_when: false
+  # Read-only API call — always run even under --check so the skip condition
+  # below has real data and doesn't incorrectly trigger an upgrade.
+  check_mode: false
+
+- name: "Upgrade Talos OS on {{ talos_upgrade_current_node }}"
+  ansible.builtin.command:
+    argv:
+      - talosctl
+      - upgrade
+      - --nodes
+      - "{{ hostvars[talos_upgrade_current_node].node_public_ip }}"
+      - --talosconfig
+      - "{{ talos_upgrade_talosconfig }}"
+      - --image
+      - "{{ talos_installer_image }}"
+      - --wait
+  # Skip if image already matches or if the read above failed (node unreachable).
+  when: >-
+    talos_upgrade_running_image.rc == 0 and
+    (talos_upgrade_running_image.stdout | trim) != talos_installer_image
+  changed_when: true
+  register: talos_upgrade_node_result
+
+# talosctl health direct-dials discovered private IPs — unreachable from outside
+# Hetzner's private network. Use etcd status instead: proxies through the public
+# IP endpoint and confirms quorum has re-stabilised after the node rejoined.
+- name: Wait for etcd to re-stabilise after upgrading {{ talos_upgrade_current_node }} # noqa: no-handler
+  ansible.builtin.command:
+    argv:
+      - talosctl
+      - -n
+      - "{{ hostvars[talos_upgrade_etcd_nodes[0]].node_public_ip }}"
+      - --talosconfig
+      - "{{ talos_upgrade_talosconfig }}"
+      - etcd
+      - status
+  register: talos_upgrade_etcd_status
+  until: talos_upgrade_etcd_status.rc == 0
+  retries: 30
+  delay: 20
+  changed_when: false
+  when: talos_upgrade_node_result is changed

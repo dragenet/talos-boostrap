@@ -1,0 +1,40 @@
+---
+cluster_name: kube1
+cluster_vip: 10.0.0.10
+cluster_endpoint: 'https://{{ cluster_vip }}:6443'
+kubernetes_version: v1.36.0
+
+# Extra IPs / hostnames added to TLS certificates beyond the defaults.
+# Both accept a mix of IPv4, IPv6, and DNS names.
+#
+# cluster_talos_cert_sans  → machine.certSANs  (Talos API, port 50000, all nodes)
+# cluster_k8s_cert_sans    → cluster.apiServer.certSANs (kube-apiserver, port 6443,
+#                             controlplane + hybrid nodes only)
+#
+# Talos already includes the node's own IPs and the VIP by default. Add extras
+# here when you reach the cluster through another address — e.g. a Tailscale IP,
+# a Cloudflare Tunnel hostname, or an internal DNS alias:
+#
+#   cluster_talos_cert_sans:
+#     - 100.64.0.5          # Tailscale IP for this node
+#     - talos.ts.example.com
+#   cluster_k8s_cert_sans:
+#     - 100.64.0.10         # Tailscale IP used as the kubectl endpoint
+#     - k8s.ts.example.com
+#
+cluster_talos_cert_sans: []
+cluster_k8s_cert_sans: []
+
+# Lookup table from full node_role name → short code used only in hostnames.
+# Full names are used everywhere else: Ansible groups, provider labels,
+# Kubernetes node-role.kubernetes.io/* labels.
+node_role_short:
+  controlplane: cp
+  hybrid: hb
+  worker: wk
+
+# All plays run locally (Talos has no SSH; cloud API calls are local too).
+# ansible_playbook_python is a magic var for whatever interpreter runs
+# ansible-playbook itself — portable, no hardcoded path needed.
+ansible_connection: local
+ansible_python_interpreter: "{{ ansible_playbook_python }}"

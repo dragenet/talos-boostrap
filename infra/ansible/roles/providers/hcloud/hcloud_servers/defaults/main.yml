@@ -1,0 +1,27 @@
+---
+# Source CIDRs allowed to reach the Talos API (50000) / Kubernetes API (6443).
+# Default to hcloud_servers_admin_ips, computed in tasks/firewall.yml from
+# hcloud_admin_ips (or auto-detected via ifconfig.me if that's empty).
+# Overridden by hcloud_firewall_open_access in group_vars:
+# true  → opens to 0.0.0.0/0 + ::/0 (dynamic IPs, less secure)
+# false → scopes to hcloud_admin_ips (or auto-detects current public IP)
+hcloud_servers_talos_api_sources: "{{ hcloud_servers_admin_ips }}"
+hcloud_servers_k8s_api_sources: "{{ hcloud_servers_admin_ips }}"
+
+# Firewall rules that are always present, regardless of the admin-access
+# rules built from hcloud_servers_{talos_api,k8s_api}_sources above.
+hcloud_servers_firewall_base_rules:
+  - direction: in
+    protocol: icmp
+    source_ips: [0.0.0.0/0, "::/0"]
+    description: ICMP
+  - direction: in
+    protocol: tcp
+    port: "1-65535"
+    source_ips: ["{{ hcloud_private_subnet_cidr }}"]
+    description: All TCP intra-cluster
+  - direction: in
+    protocol: udp
+    port: "1-65535"
+    source_ips: ["{{ hcloud_private_subnet_cidr }}"]
+    description: All UDP intra-cluster

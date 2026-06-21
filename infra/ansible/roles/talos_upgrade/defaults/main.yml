@@ -1,0 +1,19 @@
+---
+# Paths mirror talos_config role — both roles operate on the same secrets dir.
+# Sourced from inventories/common/group_vars/all/talos.yml via talos_secrets_dir
+# and talos_patches_dir (anchored to playbook_dir at playbooks/<name>.yml depth).
+talos_upgrade_secrets_dir: "{{ talos_secrets_dir }}"
+talos_upgrade_patches_dir: "{{ talos_patches_dir }}"
+
+talos_upgrade_controlplane_config: "{{ talos_upgrade_secrets_dir }}/controlplane.yaml"
+talos_upgrade_worker_config: "{{ talos_upgrade_secrets_dir }}/worker.yaml"
+talos_upgrade_talosconfig: "{{ talos_upgrade_secrets_dir }}/talosconfig"
+talos_upgrade_rendered_common_patch: "{{ talos_upgrade_secrets_dir }}/common-patch.yaml"
+talos_upgrade_rendered_controlplane_patch: "{{ talos_upgrade_secrets_dir }}/controlplane-patch.yaml"
+
+# Same node grouping logic as talos_config — controlplane + hybrid nodes run etcd.
+talos_upgrade_etcd_nodes: >-
+  {{ ((groups['hybrid'] | default([])) + (groups['controlplane'] | default([]))) | unique }}
+talos_upgrade_all_nodes: >-
+  {{ (talos_upgrade_etcd_nodes + (groups['worker'] | default([]))) | unique }}
+talos_upgrade_node_ips: "{{ talos_upgrade_etcd_nodes | map('extract', hostvars, 'node_public_ip') | list }}"

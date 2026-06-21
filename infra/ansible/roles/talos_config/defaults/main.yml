@@ -1,0 +1,32 @@
+---
+# Paths sourced from common group_vars (inventories/common/group_vars/all/talos.yml).
+# talos_secrets_dir and talos_patches_dir are anchored to playbook_dir, which
+# is correct for playbooks at infra/ansible/playbooks/<name>.yml depth.
+talos_config_secrets_dir: "{{ talos_secrets_dir }}"
+talos_config_patches_dir: "{{ talos_patches_dir }}"
+
+talos_config_secrets_file: "{{ talos_config_secrets_dir }}/secrets.yaml"
+talos_config_controlplane_config: "{{ talos_config_secrets_dir }}/controlplane.yaml"
+talos_config_worker_config: "{{ talos_config_secrets_dir }}/worker.yaml"
+talos_config_talosconfig: "{{ talos_config_secrets_dir }}/talosconfig"
+talos_config_kubeconfig: "{{ talos_config_secrets_dir }}/kubeconfig"
+
+# Rendered patch files (written to secrets dir, which is gitignored).
+# common-patch: install image — applied to all node types.
+# controlplane-patch: VIP + cluster CNI/proxy — applied to controlplane base only.
+talos_config_rendered_common_patch: "{{ talos_config_secrets_dir }}/common-patch.yaml"
+talos_config_rendered_controlplane_patch: "{{ talos_config_secrets_dir }}/controlplane-patch.yaml"
+
+# Nodes that run the Talos control-plane config (etcd members):
+# hybrid nodes participate in etcd and the VIP; controlplane-only nodes do too.
+talos_config_etcd_nodes: >-
+  {{ ((groups['hybrid'] | default([])) + (groups['controlplane'] | default([]))) | unique }}
+# All cluster nodes — etcd members plus workers.
+talos_config_all_nodes: >-
+  {{ (talos_config_etcd_nodes + (groups['worker'] | default([]))) | unique }}
+talos_config_bootstrap_node: "{{ talos_config_etcd_nodes[0] }}"
+talos_config_kubernetes_version: "{{ kubernetes_version | regex_replace('^v', '') }}"
+# Public IPs come from the dynamic inventory (inventories/providers/hcloud/hcloud.yml) or
+# from the manual inventory (inventories/providers/manual/hosts.yml), composing node_public_ip
+# from the provider's IP field or from the statically declared value.
+talos_config_node_ips: "{{ talos_config_etcd_nodes | map('extract', hostvars, 'node_public_ip') | list }}"

@@ -1,0 +1,56 @@
+---
+# Split out from main.yml so the provision-infra.yml playbook can rebuild
+# just the firewall without touching the network/servers/placement group.
+
+# Skip the ifconfig.me lookup when open access is requested — no admin IP needed.
+- name: Get current public IP
+  ansible.builtin.uri:
+    # /ip returns just the bare address; the root path returns an HTML
+    # page for Ansible's "ansible-httpget" User-Agent.
+    # NOTE: see the lock-out warning on hcloud_admin_ips in group_vars —
+    # an IP change after this run silently revokes your own access.
+    url: https://ifconfig.me/ip
+    return_content: true
+  register: hcloud_servers_public_ip
+  when: not hcloud_firewall_open_access and hcloud_admin_ips | length == 0
+  # uri doesn't support check_mode and gets auto-skipped under --check,
+  # leaving hcloud_servers_public_ip without .content. It's a read-only GET,
+  # so always run it for real even in dry runs.
+  check_mode: false
+
+# Resolve effective admin IPs:
+#   hcloud_firewall_open_access=true  → 0.0.0.0/0 + ::/0
+#   hcloud_admin_ips set              → use as-is
+#   both false/empty                  → auto-detect current public IP
+- name: Set effective admin IPs
+  ansible.builtin.set_fact:
+    hcloud_servers_admin_ips: >-
+      {{ ['0.0.0.0/0', '::/0'] if hcloud_firewall_open_access
+         else (hcloud_admin_ips if hcloud_admin_ips | length > 0
+               else [hcloud_servers_public_ip.content | trim ~ '/32']) }}
+
+# hcloud_servers_talos_api_sources / hcloud_servers_k8s_api_sources default to
+# hcloud_servers_admin_ips (see defaults/main.yml) but can be overridden to
+# ["0.0.0.0/0", "::/0"] (open to everyone via hcloud_firewall_open_access=true)
+# or [] (rule omitted, port fully closed).
+- name: Build firewall rules list
+  ansible.builtin.set_fact:
+    hcloud_servers_firewall_rules: >-
+      {{ hcloud_servers_firewall_base_rules
+         + ([{'direction': 'in', 'protocol': 'tcp', 'port': '50000',
+              'source_ips': hcloud_servers_talos_api_sources, 'description': 'Talos API'}]
+            if hcloud_servers_talos_api_sources | length > 0 else [])
+         + ([{'direction': 'in', 'protocol': 'tcp', 'port': '6443',
+              'source_ips': hcloud_servers_k8s_api_sources, 'description': 'Kubernetes API'}]
+            if hcloud_servers_k8s_api_sources | length > 0 else [])
+      }}
+
+# api_token is supplied for all hetzner.hcloud.* tasks via the
+# group/hetzner.hcloud.all module_defaults in the calling playbook;
+# ansible-lint can't see across that, hence the noqa below (and on every
+# hcloud task in main.yml).
+- name: Create firewall # noqa: args[module]
+  hetzner.hcloud.firewall:
+    name: "{{ hcloud_firewall_name }}"
+    rules: "{{ hcloud_servers_firewall_rules }}"
+    state: present

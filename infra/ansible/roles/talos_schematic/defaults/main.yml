@@ -1,0 +1,7 @@
+---
+# The schematic body is the YAML POSTed to factory.talos.dev/schematics.
+# It is built at runtime from talos_extensions (defined in common group_vars)
+# so no default here — the task will fail clearly if talos_extensions is unset.
+#
+# All other inputs (talos_extensions, talos_version, talos_schematic_cache_file)
+# come from inventories/common/group_vars/all/talos.yml.

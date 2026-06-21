@@ -1,0 +1,4 @@
+---
+flux_repo_url: '' # set to your git repo URL
+flux_repo_branch: master
+flux_path: ./flux/clusters/kube1

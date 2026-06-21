@@ -1,0 +1,23 @@
+machine:
+  network:
+    interfaces:
+      - interface: eth1
+        dhcp: true
+        vip:
+          ip: {{ cluster_vip }}
+cluster:
+  network:
+    cni:
+      name: none # Cilium installed pre-Flux in bootstrap-flux.yml
+  proxy:
+    disabled: true # Cilium replaces kube-proxy
+{% if cluster_k8s_cert_sans | length > 0 %}
+  apiServer:
+    # Extra SANs for the kube-apiserver certificate (port 6443).
+    # Kubernetes already includes the VIP and cluster_endpoint; list here any
+    # additional addresses kubectl will use (Tailscale IPs, DNS aliases, etc.).
+    certSANs:
+{% for san in cluster_k8s_cert_sans %}
+      - {{ san }}
+{% endfor %}
+{% endif %}

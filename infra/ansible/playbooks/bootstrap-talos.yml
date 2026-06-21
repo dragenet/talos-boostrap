@@ -1,0 +1,36 @@
+---
+# Applies Talos machine configs to all cluster nodes and bootstraps etcd on
+# first run. Safe to re-run — re-applies any config changes to running nodes.
+# Does NOT upgrade the Talos OS; use upgrade-talos.yml for that.
+#
+# Scope:
+#   - Resolves the Talos schematic (extensions → installer image URL)
+#   - Generates controlplane.yaml / worker.yaml / talosconfig (once; delete to regenerate)
+#   - Applies configs to nodes still in maintenance mode (first bootstrap)
+#   - Re-applies configs to running nodes (to push config changes, e.g. new
+#     Kubernetes version, updated extensions list, nodeLabels changes)
+#   - Bootstraps etcd (idempotent — no-op if already bootstrapped)
+#   - Waits for cluster health and fetches kubeconfig
+#
+# Also converges the running OS to the factory installer image on any node
+# where it differs — key for manual nodes booted from a generic Talos ISO.
+# For intentional Talos version / schematic upgrades (talos_version or
+# talos_extensions changed), prefer upgrade-talos.yml: it sequences one node
+# at a time with a health check between each, which is safer for a live cluster.
+#
+# Usage:
+#   ansible-playbook -i inventories/common -i inventories/providers/hcloud playbooks/bootstrap-talos.yml
+#   ansible-playbook -i inventories/common -i inventories/providers/manual  playbooks/bootstrap-talos.yml
+- name: Resolve Talos schematic
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - role: talos_schematic
+      tags: talos_schematic
+
+- name: Bootstrap Talos cluster
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - role: talos_config
+      tags: talos_config

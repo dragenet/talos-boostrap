@@ -1,0 +1,61 @@
+---
+# Tasks: re-apply updated machine configs to all running nodes, then upgrade
+# the Talos OS on each node serially (one at a time, health check between nodes).
+#
+# Config re-apply ensures machine.install.image and any other changed settings
+# (kubernetes_version, extensions, nodeLabels) are pushed before the OS upgrade.
+# Nodes that already run the target installer image are skipped for the upgrade
+# step — config is still re-applied so non-OS config changes land regardless.
+#
+# talosctl upgrade is etcd-quorum aware: it will refuse to upgrade a
+# control-plane node if doing so would break quorum. We add an explicit health
+# check after each upgrade as a second safety net.
+
+# Re-render patches in case talos_installer_image or other config changed.
+- name: Render common machine config patch
+  ansible.builtin.template:
+    src: "{{ talos_upgrade_patches_dir }}/common.yaml.j2"
+    dest: "{{ talos_upgrade_rendered_common_patch }}"
+    mode: "0600"
+
+- name: Render control-plane machine config patch
+  ansible.builtin.template:
+    src: "{{ talos_upgrade_patches_dir }}/controlplane.yaml.j2"
+    dest: "{{ talos_upgrade_rendered_controlplane_patch }}"
+    mode: "0600"
+
+# Push updated config to every running node before upgrading.
+# --mode=no-reboot: applies live changes without forcing a reboot. The upgrade
+# step below handles the reboot. If a change requires a reboot outside of an
+# OS upgrade (e.g. kernel param), Talos will report it.
+# apply-config produces no diff output, so changed_when is unconditional here.
+- name: Re-apply machine config to all nodes
+  ansible.builtin.command:
+    argv: >-
+      {{ (['talosctl', 'apply-config',
+           '--mode', 'no-reboot',
+           '-n', hostvars[item].node_public_ip,
+           '--talosconfig', talos_upgrade_talosconfig,
+           '--file',
+           talos_upgrade_controlplane_config
+           if hostvars[item].node_role in ['controlplane', 'hybrid']
+           else talos_upgrade_worker_config,
+           '--config-patch',
+           '{"apiVersion":"v1alpha1","kind":"HostnameConfig","hostname":"' ~ item ~ '","auto":"off"}',
+           '--config-patch',
+           '{"machine":{"nodeLabels":{"node-role.kubernetes.io/' ~ hostvars[item].node_role ~ '":""}}}']
+          + (['--config-patch', '{"cluster":{"allowSchedulingOnControlPlanes":true}}']
+             if hostvars[item].node_role == 'hybrid' else [])) }}
+  loop: "{{ talos_upgrade_all_nodes }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: true
+
+# Upgrade each node one at a time: read running image, upgrade if it differs,
+# wait for cluster health before moving to the next node.
+- name: Upgrade each node serially
+  ansible.builtin.include_tasks: upgrade_node.yml
+  loop: "{{ talos_upgrade_all_nodes }}"
+  loop_control:
+    loop_var: talos_upgrade_current_node
+    label: "{{ talos_upgrade_current_node }}"

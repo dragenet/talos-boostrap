@@ -1,0 +1,87 @@
+---
+# Tasks: resolve the Talos schematic ID from configured extensions and expose
+# talos_schematic_id, talos_installer_image, and talos_disk_image_url as facts.
+#
+# The schematic ID is content-addressed (deterministic for a given set of
+# extensions + version). Results are cached in infra/talos/schematic_id
+# (gitignored) keyed by an extensions hash; the factory POST is skipped on
+# subsequent runs unless the extensions list or talos_version changes.
+
+- name: Compute extensions hash
+  ansible.builtin.set_fact:
+    talos_schematic_extensions_hash: >-
+      {{ (talos_extensions | sort | to_json + talos_version) | hash('sha256') }}
+
+# Anchor the cache path to role_path, not playbook_dir. role_path is always
+# infra/ansible/roles/talos_schematic regardless of which playbook calls this
+# role, so the path is stable even when called from playbooks/providers/hcloud/*.
+- name: Set schematic cache path
+  ansible.builtin.set_fact:
+    talos_schematic_cache_path: "{{ role_path }}/../../../talos/schematic_id"
+
+- name: Read schematic cache file
+  ansible.builtin.slurp:
+    src: "{{ talos_schematic_cache_path }}"
+  register: talos_schematic_cache_raw
+  failed_when: false
+  check_mode: false
+
+- name: Parse cached schematic
+  ansible.builtin.set_fact:
+    talos_schematic_cache: "{{ talos_schematic_cache_raw.content | b64decode | from_yaml }}"
+  when: talos_schematic_cache_raw.content is defined
+
+# POSTs only when the cache is missing or the extensions/version changed.
+# factory.talos.dev/schematics is idempotent and returns the same ID for the
+# same schematic content, so running this multiple times is safe.
+- name: Resolve schematic from Image Factory
+  when: >-
+    talos_schematic_cache_raw.content is not defined or
+    (talos_schematic_cache.extensions_hash | default('')) != talos_schematic_extensions_hash
+  block:
+    - name: Build schematic body from extensions list
+      ansible.builtin.set_fact:
+        talos_schematic_body: >-
+          {{ {'customization': {'systemExtensions': {'officialExtensions': talos_extensions}}} | to_nice_yaml }}
+
+    - name: POST schematic to factory.talos.dev
+      ansible.builtin.uri:
+        url: https://factory.talos.dev/schematics
+        method: POST
+        body: "{{ talos_schematic_body }}"
+        body_format: raw
+        headers:
+          Content-Type: text/yaml
+        return_content: true
+        status_code: 201
+      register: talos_schematic_response
+      # This is a read-only operation (same extensions → same ID); always run even
+      # under --check so downstream tasks have the schematic_id available.
+      check_mode: false
+
+    - name: Cache resolved schematic ID
+      ansible.builtin.copy:
+        content: |
+          schematic_id: {{ talos_schematic_response.json.id }}
+          extensions_hash: {{ talos_schematic_extensions_hash }}
+        dest: "{{ talos_schematic_cache_path }}"
+        mode: "0644"
+      check_mode: false
+
+- name: Set schematic ID fact
+  ansible.builtin.set_fact:
+    talos_schematic_id: >-
+      {{
+        talos_schematic_response.json.id
+        if (talos_schematic_cache_raw.content is not defined or
+            (talos_schematic_cache.extensions_hash | default('')) != talos_schematic_extensions_hash)
+        else talos_schematic_cache.schematic_id
+      }}
+
+# talos_installer_image and talos_disk_image_url are cross-role facts consumed by
+# talos_config (via the controlplane.yaml.j2 patch template), talos_upgrade, and
+# hcloud image build — they intentionally don't carry the talos_schematic_ prefix.
+- name: Set image URL facts # noqa: var-naming[no-role-prefix]
+  ansible.builtin.set_fact:
+    talos_installer_image: "factory.talos.dev/installer/{{ talos_schematic_id }}:{{ talos_version }}"
+    talos_disk_image_url: "factory.talos.dev/image/{{ talos_schematic_id }}/{{ talos_version }}/hcloud-amd64.raw.xz"

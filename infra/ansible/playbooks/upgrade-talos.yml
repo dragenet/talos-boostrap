@@ -1,0 +1,39 @@
+---
+# Upgrades the Talos OS on all cluster nodes to the configured version and
+# schematic. Also re-applies machine configs first so that config changes
+# (kubernetes_version bump, extensions list, nodeLabels) land alongside the OS
+# upgrade in a single operation.
+#
+# Scope:
+#   - Resolves the Talos schematic (extensions → new installer image URL)
+#   - Re-renders and re-applies machine configs to all running nodes
+#   - Upgrades each node's OS one at a time: reads running image, runs
+#     talosctl upgrade only if the image differs, waits for cluster health
+#     before moving to the next node
+#   - Nodes already running the target image are skipped for the upgrade step
+#     (config is still re-applied so any non-OS config changes land)
+#
+# This playbook is EXCLUSIVELY for OS-level upgrades (Talos version or
+# schematic/extension changes). Config-only changes (no OS upgrade needed)
+# can be pushed by re-running bootstrap-talos.yml instead.
+#
+# Talos is etcd-quorum aware: it refuses to upgrade a control-plane node if
+# doing so would break quorum. An explicit per-node health check adds a second
+# safety net. Expect each upgraded node to reboot.
+#
+# Usage:
+#   ansible-playbook -i inventories/common -i inventories/providers/hcloud playbooks/upgrade-talos.yml
+#   ansible-playbook -i inventories/common -i inventories/providers/manual  playbooks/upgrade-talos.yml
+- name: Resolve Talos schematic
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - role: talos_schematic
+      tags: talos_schematic
+
+- name: Upgrade Talos cluster nodes
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - role: talos_upgrade
+      tags: talos_upgrade

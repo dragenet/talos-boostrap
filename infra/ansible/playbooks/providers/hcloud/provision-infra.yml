@@ -1,0 +1,56 @@
+---
+# Provisions Hetzner Cloud infrastructure: private network, subnet, firewall,
+# spread placement group, and servers (derived from hcloud_topology in group_vars).
+# Idempotent — re-running converges to the desired state without recreating.
+#
+# The Talos snapshot is resolved dynamically by querying Hetzner for a snapshot
+# whose labels match the current talos_version + talos_schematic_id. No hardcoded
+# image ID — run playbooks/providers/hcloud/image-talos.yml first if none is found.
+#
+# Usage:
+#   ansible-playbook -i inventories/common -i inventories/providers/hcloud playbooks/providers/hcloud/provision-infra.yml
+
+- name: Resolve Talos schematic
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - role: talos_schematic
+      tags: talos_schematic
+
+- name: Resolve Talos snapshot
+  hosts: localhost
+  gather_facts: false
+  module_defaults:
+    group/hetzner.hcloud.all:
+      api_token: '{{ hcloud_token }}'
+  tasks:
+    - name: Find Talos snapshot for current version and schematic # noqa: args[module]
+      hetzner.hcloud.image_info:
+        type: snapshot
+        label_selector: "talos-version={{ talos_version }},talos-schematic-id={{ talos_schematic_id[:12] }}"
+      register: hcloud_talos_image_lookup
+
+    - name: Fail if no matching snapshot exists
+      ansible.builtin.fail:
+        msg: >-
+          No Talos snapshot found for version={{ talos_version }},
+          schematic={{ talos_schematic_id[:12] }}.
+          Build one first:
+            ansible-playbook -i inventories/common -i inventories/providers/hcloud
+            playbooks/providers/hcloud/image-talos.yml
+      when: hcloud_talos_image_lookup.hcloud_image_info | length == 0
+
+    - name: Set hcloud_talos_image from snapshot label lookup
+      ansible.builtin.set_fact:
+        hcloud_talos_image: "{{ hcloud_talos_image_lookup.hcloud_image_info[0].id }}"
+
+- name: Provision Hetzner Cloud infrastructure
+  hosts: localhost
+  gather_facts: false
+  module_defaults:
+    group/hetzner.hcloud.all:
+      api_token: '{{ hcloud_token }}'
+  roles:
+    # roles_path includes roles/providers/ so hcloud/ is a namespace, not a path.
+    - role: hcloud/hcloud_servers  # noqa: role-name[path]
+      tags: hcloud_servers

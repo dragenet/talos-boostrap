@@ -1,0 +1,13 @@
+---
+# Installs Cilium (pre-Flux CNI) and bootstraps Flux from the git repository.
+# Requires a healthy cluster (run bootstrap-talos.yml first).
+#
+# Usage:
+#   ansible-playbook -i inventories/common -i inventories/providers/hcloud playbooks/bootstrap-flux.yml
+#   ansible-playbook -i inventories/common -i inventories/providers/manual  playbooks/bootstrap-flux.yml
+- name: Bootstrap Flux and install pre-Flux add-ons
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - role: flux_bootstrap
+      tags: flux_bootstrap

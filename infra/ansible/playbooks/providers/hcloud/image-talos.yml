@@ -1,0 +1,279 @@
+---
+# Builds a Talos disk snapshot on Hetzner Cloud via rescue mode.
+# Run once before provisioning cluster nodes; re-run after changing
+# talos_version or talos_extensions.
+#
+# Idempotency: queries Hetzner for an existing snapshot with matching
+# talos-version and talos-schematic-id labels. Skips the build if one is
+# found; delete that snapshot to force a rebuild.
+#
+# Prerequisites:
+#   - SSH key registered in Hetzner Cloud (set hcloud_ssh_key_name in group_vars)
+#   - hcloud_token set in inventories/providers/hcloud/group_vars/all/hcloud.sops.yaml
+#
+# Usage:
+#   ansible-playbook -i inventories/common -i inventories/providers/hcloud playbooks/providers/hcloud/image-talos.yml
+
+- name: Resolve Talos schematic
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - role: talos_schematic
+      tags: talos_schematic
+
+- name: Create builder server in rescue mode
+  hosts: localhost
+  gather_facts: false
+  module_defaults:
+    group/hetzner.hcloud.all:
+      api_token: '{{ hcloud_token }}'
+
+  tasks:
+    # Content-addressed lookup: a snapshot is uniquely identified by the
+    # combination of talos_version + talos_schematic_id (which encodes the
+    # extension set). No need to track a local ID file — the labels are the
+    # source of truth.
+    - name: Find existing snapshot for current version and schematic # noqa: args[module]
+      hetzner.hcloud.image_info:
+        type: snapshot
+        label_selector: "talos-version={{ talos_version }},talos-schematic-id={{ talos_schematic_id[:12] }}"
+      register: hcloud_talos_existing_image
+
+    - name: Set build flag
+      ansible.builtin.set_fact:
+        # Persists as a host fact — Play 4 reads it to guard the snapshot/cleanup block.
+        hcloud_talos_build_needed: "{{ hcloud_talos_existing_image.hcloud_image_info | length == 0 }}"
+
+    - name: Set hcloud_talos_image from existing snapshot
+      ansible.builtin.set_fact:
+        hcloud_talos_image: "{{ hcloud_talos_existing_image.hcloud_image_info[0].id }}"
+      when: not hcloud_talos_build_needed
+
+    - name: Report existing snapshot and skip build
+      ansible.builtin.debug:
+        msg: >-
+          Snapshot {{ hcloud_talos_image }} ({{ talos_version }}/{{ talos_schematic_id[:12] }})
+          already exists. Delete it from Hetzner Cloud to force a rebuild.
+      when: not hcloud_talos_build_needed
+
+    # Resolve builder server type before creating the builder.
+    # Same priority-list pattern as hcloud_servers — first available wins.
+    - name: Query availability of builder server types # noqa: args[module]
+      hetzner.hcloud.server_type_info:
+        name: "{{ item }}"
+      register: hcloud_builder_type_query
+      loop: "{{ hcloud_builder_server_types }}"
+      when: hcloud_talos_build_needed
+
+    - name: Resolve first available builder server type
+      ansible.builtin.set_fact:
+        hcloud_builder_server_type: >-
+          {%- set avail = {} -%}
+          {%- for result in hcloud_builder_type_query.results -%}
+            {%- if result.hcloud_server_type_info | length > 0 -%}
+              {%- set info = result.hcloud_server_type_info[0] -%}
+              {%- set loc = info.locations | selectattr('name', '==', hcloud_location) | list -%}
+              {%- set _ = avail.update({info.name: loc | length > 0 and loc[0].available}) -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {{ hcloud_builder_server_types
+             | intersect(avail | dict2items | selectattr('value') | map(attribute='key') | list)
+             | first | default('') }}
+      when: hcloud_talos_build_needed
+
+    - name: Fail if no builder server type is available
+      ansible.builtin.fail:
+        msg: >-
+          No builder server type available from {{ hcloud_builder_server_types }}
+          in {{ hcloud_location }}.
+      when: hcloud_talos_build_needed and hcloud_builder_server_type == ''
+
+    - name: Create and prepare the rescue builder
+      when: hcloud_talos_build_needed
+      block:
+        # api_token is supplied for all hetzner.hcloud.* tasks via the
+        # group/hetzner.hcloud.all module_defaults above; ansible-lint can't
+        # see across that, hence the noqa below (and on every hcloud task in
+        # this file).
+        - name: Create temporary builder server # noqa: args[module]
+          hetzner.hcloud.server:
+            name: talos-builder
+            server_type: '{{ hcloud_builder_server_type }}'
+            image: ubuntu-26.04
+            location: '{{ hcloud_location }}'
+            ssh_keys:
+              - '{{ hcloud_ssh_key_name }}'
+            enable_ipv4: true
+            enable_ipv6: false
+            state: present
+          register: builder_server
+
+        - name: Look up SSH key ID # noqa: args[module]
+          hetzner.hcloud.ssh_key_info:
+            name: '{{ hcloud_ssh_key_name }}'
+          register: builder_ssh_key
+
+        # Arm rescue explicitly on the running server (combining it with creation
+        # doesn't reliably take effect). enable_rescue flags rescue for the next boot.
+        - name: Enable rescue mode via Hetzner API
+          ansible.builtin.uri:
+            url: 'https://api.hetzner.cloud/v1/servers/{{ builder_server.hcloud_server.id }}/actions/enable_rescue'
+            method: POST
+            headers:
+              Authorization: 'Bearer {{ hcloud_token }}'
+              Content-Type: application/json
+            body_format: json
+            body:
+              type: linux64
+              ssh_keys:
+                - '{{ builder_ssh_key.hcloud_ssh_key_info[0].id }}'
+            status_code: 200
+          register: enable_rescue
+
+        - name: Wait for enable_rescue action to finish
+          ansible.builtin.uri:
+            url: 'https://api.hetzner.cloud/v1/actions/{{ enable_rescue.json.action.id }}'
+            method: GET
+            headers:
+              Authorization: 'Bearer {{ hcloud_token }}'
+          register: rescue_action
+          until: rescue_action.json.action.status in ['success', 'error']
+          retries: 20
+          delay: 5
+          failed_when: rescue_action.json.action.status == 'error'
+
+        # Hard reset so the server boots into the now-armed rescue system.
+        - name: Reset server into rescue mode
+          ansible.builtin.uri:
+            url: 'https://api.hetzner.cloud/v1/servers/{{ builder_server.hcloud_server.id }}/actions/reset'
+            method: POST
+            headers:
+              Authorization: 'Bearer {{ hcloud_token }}'
+            status_code: 201
+
+        - name: Wait for SSH to be available in rescue mode
+          ansible.builtin.wait_for:
+            host: '{{ builder_server.hcloud_server.ipv4_address }}'
+            port: 22
+            delay: 20
+            timeout: 180
+
+        # add_host inserts a host into the in-memory inventory so the next play
+        # can target it with SSH without it existing in hosts.yml.
+        - name: Add builder to in-memory inventory
+          ansible.builtin.add_host:
+            name: talos-builder
+            # Override ansible_connection: local from the common group_vars —
+            # the Talos nodes have no SSH, but the rescue builder does.
+            ansible_connection: ssh
+            ansible_host: '{{ builder_server.hcloud_server.ipv4_address }}'
+            ansible_user: root
+            ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+            # cluster.yml sets ansible_python_interpreter to the local macOS pipx path
+            # (correct for localhost). Override here so the rescue Ubuntu host uses its
+            # own Python3 instead of a path that only exists on the control machine.
+            ansible_python_interpreter: /usr/bin/python3
+
+- name: Write Talos image to disk
+  # Skipped automatically when talos-builder was never added to inventory
+  # (i.e. when an existing snapshot was found above).
+  hosts: talos-builder
+  gather_facts: false
+
+  tasks:
+    - name: Stream Talos image directly to /dev/sda  # noqa: command-instead-of-module
+      # curl|xz|dd is the only way to stream-decompress directly to a block device;
+      # no Ansible module covers this. set -o pipefail + PIPESTATUS check for all
+      # three stages closes the gap where dd's exit code (0 if it got *any* bytes)
+      # would mask a failed/truncated curl or xz. The byte-count guard catches a
+      # truncated write being silently reported as success.
+      ansible.builtin.shell: |
+        set -o pipefail
+        curl -fsSL "{{ hostvars['localhost']['talos_disk_image_url'] }}" \
+          | xz -dc | dd of=/dev/sda bs=4M conv=fsync status=progress
+        for rc in "${PIPESTATUS[@]}"; do
+          if [ "$rc" -ne 0 ]; then
+            echo "Pipeline stage failed with rc=$rc" >&2
+            exit 1
+          fi
+        done
+        written_bytes=$(blockdev --getsize64 /dev/sda)
+        # Talos hcloud images are well over 100MB uncompressed; guard against a
+        # truncated/empty write being reported as success.
+        if [ "$written_bytes" -lt 104857600 ]; then
+          echo "Suspiciously small write to /dev/sda: ${written_bytes} bytes" >&2
+          exit 1
+        fi
+        echo "Wrote ${written_bytes} bytes to /dev/sda"
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+- name: Snapshot builder and clean up
+  hosts: localhost
+  gather_facts: false
+  module_defaults:
+    group/hetzner.hcloud.all:
+      api_token: '{{ hcloud_token }}'
+
+  tasks:
+    - name: Snapshot and clean up the builder
+      # hcloud_talos_build_needed persists from Play 2 as a host fact.
+      when: hcloud_talos_build_needed
+      block:
+        - name: Power off builder server # noqa: args[module]
+          hetzner.hcloud.server:
+            name: talos-builder
+            state: stopped
+
+        # hcloud Ansible collection has no snapshot module, so we hit the API directly.
+        - name: Create snapshot via Hetzner API
+          ansible.builtin.uri:
+            url: 'https://api.hetzner.cloud/v1/servers/{{ builder_server.hcloud_server.id }}/actions/create_image'
+            method: POST
+            headers:
+              Authorization: 'Bearer {{ hcloud_token }}'
+              Content-Type: application/json
+            body_format: json
+            body:
+              type: snapshot
+              # Name encodes version + schematic short-hash so rebuilds with
+              # different extensions produce distinguishable snapshots in the
+              # Hetzner Cloud console. Full schematic ID is in the label.
+              description: 'talos-{{ talos_version }}-{{ talos_schematic_id[:12] }}'
+              labels:
+                talos-version: '{{ talos_version }}'
+                # Full schematic ID is 64 chars — exceeds the 63-char Kubernetes
+                # label value limit used by the Hetzner API. 12 hex chars (48 bits)
+                # is unique enough; the full ID is also in the snapshot description.
+                talos-schematic-id: '{{ talos_schematic_id[:12] }}'
+            status_code: 201
+          register: snapshot_action
+
+        - name: Wait for snapshot to finish
+          ansible.builtin.uri:
+            url: 'https://api.hetzner.cloud/v1/actions/{{ snapshot_action.json.action.id }}'
+            method: GET
+            headers:
+              Authorization: 'Bearer {{ hcloud_token }}'
+          register: action_status
+          until: action_status.json.action.status in ['success', 'error']
+          retries: 30
+          delay: 15
+          failed_when: action_status.json.action.status == 'error'
+
+        - name: Set hcloud_talos_image fact from new snapshot
+          ansible.builtin.set_fact:
+            hcloud_talos_image: "{{ snapshot_action.json.image.id }}"
+
+        - name: Print new snapshot ID
+          ansible.builtin.debug:
+            msg: >-
+              Snapshot created: {{ hcloud_talos_image }}
+              ({{ talos_version }}/{{ talos_schematic_id[:12] }})
+              — provision-infra.yml will resolve this automatically via labels.
+
+        - name: Delete builder server # noqa: args[module]
+          hetzner.hcloud.server:
+            name: talos-builder
+            state: absent
