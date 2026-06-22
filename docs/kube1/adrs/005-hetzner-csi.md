@@ -17,4 +17,4 @@ Requires the hcloud CCM to be running first — the CSI driver uses `node.spec.p
 - Volumes are **location-scoped** (`nbg1`) — a volume cannot be attached to a node in a different Hetzner location. This is a non-issue for the single-DC topology (see kube1 ADR-002) but would block a multi-DC expansion.
 - Volumes are **single-attach** (ReadWriteOnce) — no shared block access across pods on different nodes. Workloads needing shared storage use a different mechanism (e.g. an object store).
 - Hetzner Cloud Volumes are billed per GB provisioned (verify current pricing live at hetzner.com). Unused PVCs still incur cost.
-- Latency-sensitive workloads (databases, message queues) prefer local storage — see ADR-006 (OpenEBS LocalLV LVM) for the low-latency tier.
+- Latency-sensitive workloads (databases, message queues) prefer local storage — see cluster-bootstrap ADR-009 (OpenEBS LocalLV LVM) for the low-latency tier.

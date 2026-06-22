@@ -1,5 +1,6 @@
 infra/talos/secrets/
 infra/talos/schematic_id
+infra/talos/talos_snapshot_id
 infra/ansible/.collections/
 *.sops.decrypted.*
 
