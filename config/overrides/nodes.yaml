@@ -1,0 +1,22 @@
+---
+# config/overrides/nodes.yaml — USER-OWNED per-node hardware configuration.
+#
+# Per-node overrides for hardware-specific settings (disk selectors, network
+# device selectors, raw Talos patches). The ADR-014 inventory already supplies
+# node public/private IPs and roles, so this file starts empty.
+#
+# Future/manual use: when nodes have heterogeneous hardware (different NICs,
+# disk layouts, etc.), add entries here. Per-node patches are Layer 2 raw
+# fragments (ADR-013) applied after cluster-wide patches.
+#
+# Example shape:
+#   nodes:
+#     - name: kube1-hb1
+#       role: hybrid
+#       network:
+#         interfaces:
+#           - name: private
+#             deviceSelector: null   # MAC or PCI selector when known
+#       patch: []                    # raw Talos YAML fragments for this node
+
+nodes: []

@@ -1,0 +1,233 @@
+---
+# Validate merged configuration against schema rules.
+#
+# Checks:
+#   - Required fields are present and non-empty.
+#   - Provider-gated fields are consistent with provider.name.
+#   - Feature constraints (ADR-012): ingress pick-one, cert-dependent features.
+#   - Computed-key rejection: talos_extensions, bootstrap_pre_flux_components,
+#     cluster_endpoint must not be set directly (ADR-011).
+#   - VIP single source of truth: reject deprecated talos.network.vip; use
+#     cluster.vip (feeds both Ansible cluster_vip and the Talos network patch).
+
+# --- Required fields ---
+
+- name: Validate cluster.name is set
+  ansible.builtin.assert:
+    that:
+      - config_render_merged.cluster.name | default('') | length > 0
+    fail_msg: "cluster.name must be set in config/overrides/cluster.yaml"
+    quiet: true
+
+- name: Validate cluster.vip is set
+  ansible.builtin.assert:
+    that:
+      - config_render_merged.cluster.vip | default('') | length > 0
+    fail_msg: "cluster.vip must be set in config/overrides/cluster.yaml"
+    quiet: true
+
+- name: Validate provider.name is valid
+  ansible.builtin.assert:
+    that:
+      - config_render_merged.provider.name in ['hcloud', 'manual']
+    fail_msg: "provider.name must be 'hcloud' or 'manual', got '{{ config_render_merged.provider.name | default('') }}'"
+    quiet: true
+
+# --- Provider-gated validation ---
+
+- name: Validate hcloud fields require hcloud provider
+  ansible.builtin.assert:
+    that:
+      - config_render_merged.provider.name == 'hcloud'
+    fail_msg: >-
+      hcloud-specific settings (hcloud.*) are set but provider.name is
+      '{{ config_render_merged.provider.name }}'. Either set provider.name: hcloud
+      or remove hcloud overrides.
+    quiet: true
+  when: >-
+    (config_render_merged.hcloud.privateNetworkName | default('') | length > 0) or
+    (config_render_merged.hcloud.firewallName | default('') | length > 0) or
+    (config_render_merged.hcloud.topology | default({}) | dict2items | selectattr('value', 'gt', 0) | list | length > 0)
+
+- name: Validate hcloudCsi requires hcloud provider
+  ansible.builtin.assert:
+    that:
+      - config_render_merged.provider.name == 'hcloud'
+    fail_msg: "features.hcloudCsi: true requires provider.name: hcloud"
+    quiet: true
+  when: config_render_merged.features.hcloudCsi | default(false) | bool
+
+# hcloudCcm (Cloud Controller Manager) requires the hcloud provider and the
+# cilium CNI. The CCM is installed pre-Flux alongside Cilium and clears the
+# uninitialized node taint; without cilium as the CNI the bootstrap_pre_flux
+# list drops hcloud-ccm silently, so fail fast here rather than let the flag
+# appear enabled while having no effect.
+- name: Validate hcloudCcm requires hcloud provider and cilium CNI
+  ansible.builtin.assert:
+    that:
+      - config_render_merged.provider.name == 'hcloud'
+      - config_render_merged.features.cni == 'cilium'
+    fail_msg: >-
+      features.hcloudCcm: true requires provider.name: hcloud and
+      features.cni: cilium (the CCM installs pre-Flux alongside Cilium).
+      Got provider '{{ config_render_merged.provider.name | default('') }}'
+      and cni '{{ config_render_merged.features.cni | default('') }}'.
+    quiet: true
+  when: config_render_merged.features.hcloudCcm | default(false) | bool
+
+# --- Feature constraints (ADR-012) ---
+
+- name: Validate features.cni is pick-one
+  ansible.builtin.assert:
+    that:
+      - config_render_merged.features.cni in ['cilium', 'none']
+    fail_msg: >-
+      features.cni must be one of: cilium, none.
+      Got '{{ config_render_merged.features.cni | default('') }}'.
+      An invalid value silently disables Cilium wiring (CNI proxy patch,
+      bootstrap_pre_flux_components) so typos fail fast here instead.
+    quiet: true
+
+- name: Validate ingress is pick-one
+  ansible.builtin.assert:
+    that:
+      - config_render_merged.features.ingress in ['none', 'envoy-gateway', 'traefik']
+    fail_msg: >-
+      features.ingress must be one of: none, envoy-gateway, traefik.
+      Got '{{ config_render_merged.features.ingress | default('') }}'
+    quiet: true
+
+- name: Validate cert-dependent features require cert-manager
+  ansible.builtin.assert:
+    that:
+      - config_render_merged.features.certManager | default(false) | bool
+    fail_msg: >-
+      features.ingress '{{ config_render_merged.features.ingress }}' requires
+      TLS certificates. Set features.certManager: true or features.ingress: none.
+    quiet: true
+  when: config_render_merged.features.ingress not in ['none', '']
+
+# --- Computed-key rejection (ADR-011) ---
+# The following flat Ansible vars are computed by the renderer (compute.yml)
+# from nested schema fields. Setting them directly in overrides has no effect
+# (the renderer overwrites them) and silently misleads the operator into
+# thinking they configured something. Reject them so the failure is loud.
+
+# talos_extensions is computed from talos.extensions.base ∪ feature-implied ∪
+# talos.extensions.extra. Reject if a user tries to set it directly in overrides.
+- name: Reject direct override of computed talos_extensions
+  ansible.builtin.assert:
+    that:
+      - "'talos_extensions' not in (config_render_overrides | default({}))"
+    fail_msg: >-
+      talos_extensions is a computed key. Use talos.extensions.base and
+      talos.extensions.extra instead.
+    quiet: true
+
+# bootstrap_pre_flux_components is computed from features.cni + provider.name
+# (ADR-010). It is rendered into the provider group_vars, not read from input.
+- name: Reject direct override of computed bootstrap_pre_flux_components
+  ansible.builtin.assert:
+    that:
+      - "'bootstrap_pre_flux_components' not in (config_render_overrides | default({}))"
+    fail_msg: >-
+      bootstrap_pre_flux_components is a computed key, derived from
+      features.cni and provider.name. Do not set it directly in overrides.
+    quiet: true
+
+# cluster_endpoint is computed from cluster.vip (or cluster.endpoint if
+# explicitly overridden via the schema field, not the flat var). The flat
+# cluster_endpoint var is render-owned.
+- name: Reject direct override of computed cluster_endpoint
+  ansible.builtin.assert:
+    that:
+      - "'cluster_endpoint' not in (config_render_overrides | default({}))"
+    fail_msg: >-
+      cluster_endpoint is a computed key, derived from cluster.vip (or
+      cluster.endpoint for an explicit override). Do not set the flat
+      cluster_endpoint var directly in overrides; use cluster.endpoint instead.
+    quiet: true
+
+# --- VIP single source of truth ---
+# cluster.vip is the only source for the VIP. talos.network.vip was a duplicate
+# that risked silent divergence (Talos patch VIP vs. Ansible cluster_vip/endpoint).
+# The renderer sources the Talos network patch VIP from cluster.vip; setting
+# talos.network.vip has no effect and is rejected. Defaults no longer declare
+# it, so any presence in the merged config came from overrides.
+
+- name: Reject deprecated talos.network.vip in favour of cluster.vip
+  ansible.builtin.assert:
+    that:
+      - "'vip' not in (config_render_merged.talos.network | default({}))"
+    fail_msg: >-
+      talos.network.vip is no longer a schema key. The VIP has a single source
+      of truth at cluster.vip. Remove talos.network.vip from
+      config/overrides/cluster.yaml and set cluster.vip instead.
+    quiet: true
+
+# --- Deferred structured helpers (ADR-013) ---
+# The schema exposes these Layer-1 structured helpers, but the render compiler
+# does not yet emit them into the Talos machine config. Allowing a non-default
+# value would silently mislead the operator into thinking they configured disk
+# selection or data volumes. Reject any non-default value with a clear
+# "deferred / not implemented" message and point at the Layer-2 raw-fragment
+# workaround (talos.patches.all / nodes[].patch) so expressiveness is not lost.
+# Remove a check here once its helper is actually rendered.
+
+- name: Reject talos.install.disk (deferred — not yet rendered)
+  ansible.builtin.assert:
+    that:
+      - config_render_merged.talos.install.disk | default(none) is none
+    fail_msg: >-
+      talos.install.disk is a deferred structured helper (ADR-013): the render
+      compiler does not yet emit machine.install.disk from it, so setting it
+      has no effect. Leave it null (Talos selects a disk automatically) or
+      supply a raw machine.install.disk fragment via talos.patches.all instead.
+    quiet: true
+
+- name: Reject talos.install.diskSelector (deferred — not yet rendered)
+  ansible.builtin.assert:
+    that:
+      - config_render_merged.talos.install.diskSelector | default(none) is none
+    fail_msg: >-
+      talos.install.diskSelector is a deferred structured helper (ADR-013): the
+      render compiler does not yet emit machine.install.diskSelector from it,
+      so setting it has no effect. Leave it null (Talos selects a disk
+      automatically) or supply a raw machine.install.diskSelector fragment via
+      talos.patches.all instead.
+    quiet: true
+
+- name: Reject storage.volumes (deferred — not yet rendered)
+  ansible.builtin.assert:
+    that:
+      - config_render_merged.storage.volumes | default([]) | length == 0
+    fail_msg: >-
+      storage.volumes is a deferred structured helper (ADR-013): the render
+      compiler does not yet emit Talos volume configs from it, and OpenEBS
+      LocalLV wiring is deferred (ADR-009). Setting it has no effect. Leave it
+      empty or supply raw volume fragments via talos.patches.all (or
+      nodes[].patch for per-node devices) instead.
+    quiet: true
+
+# --- hcloud topology validation ---
+
+- name: Validate hcloud topology has at least one node
+  ansible.builtin.assert:
+    that:
+      - >-
+        (config_render_merged.hcloud.topology.controlplane | default(0) | int) +
+        (config_render_merged.hcloud.topology.hybrid | default(0) | int) +
+        (config_render_merged.hcloud.topology.worker | default(0) | int) > 0
+    fail_msg: >-
+      hcloud topology must have at least one node total.
+      Set at least one of controlplane/hybrid/worker > 0.
+    quiet: true
+  when: config_render_merged.provider.name == 'hcloud'
+
+- name: Validate hcloud server types list is non-empty
+  ansible.builtin.assert:
+    that:
+      - config_render_merged.hcloud.serverTypes | default([]) | length > 0
+    fail_msg: "hcloud.serverTypes must be a non-empty list when provider.name: hcloud"
+    quiet: true
+  when: config_render_merged.provider.name == 'hcloud'

@@ -1,6 +1,13 @@
 ---
 # Tasks: generate machine configs per node role, apply to each node,
 # bootstrap etcd, wait for health, converge installer image.
+#
+# Patch model (ADR-013 layered):
+#   1. Discover ordered .yaml.j2 templates in generated/all/ and generated/controlplane/
+#   2. Render each template to rendered-patches/ inside secrets dir
+#   3. Pass them as --config-patch / --config-patch-control-plane to talosctl gen config
+#   4. Per-node customisation (hostname, nodeLabels, hybrid scheduling) applied at
+#      apply-config time via inline --config-patch (unchanged from pre-refactor).
 
 - name: Ensure Talos secrets directory exists
   ansible.builtin.file:
@@ -8,44 +15,107 @@
     state: directory
     mode: "0700"
 
-# common-patch.yaml: machine.install.image — applied to ALL node types at gen time.
-- name: Render common machine config patch
+- name: Ensure rendered-patches directory exists
+  ansible.builtin.file:
+    path: "{{ talos_config_rendered_patches_dir }}"
+    state: directory
+    mode: "0700"
+
+# --- Discover generated patch templates ---
+# Alphabetical order within each directory; later patches win per Talos docs.
+# The 00/10/90 numbering controls layering: structured helpers first, user raw last.
+
+- name: Discover generated all-node patch templates
+  ansible.builtin.find:
+    paths: "{{ talos_config_generated_all_dir }}"
+    patterns: "*.yaml.j2"
+    file_type: file
+  register: talos_config_discovered_all_patches
+
+- name: Discover generated control-plane patch templates
+  ansible.builtin.find:
+    paths: "{{ talos_config_generated_cp_dir }}"
+    patterns: "*.yaml.j2"
+    file_type: file
+  register: talos_config_discovered_cp_patches
+
+# --- Render discovered templates ---
+# Each .yaml.j2 is rendered to rendered-patches/ with a scope prefix for clarity.
+# The rendered files are plain YAML (Jinja expressions resolved).
+
+- name: Render all-node patches to secrets dir
   ansible.builtin.template:
-    src: "{{ talos_config_patches_dir }}/common.yaml.j2"
-    dest: "{{ talos_config_rendered_common_patch }}"
+    src: "{{ item.path }}"
+    dest: "{{ talos_config_rendered_patches_dir }}/all-{{ item.path | basename | regex_replace('.j2$', '') }}"
     mode: "0600"
+  loop: "{{ talos_config_discovered_all_patches.files | sort(attribute='path') }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
 
-# controlplane-patch.yaml: VIP + cluster CNI/proxy — applied only to the
-# controlplane base config at gen time. Workers get neither VIP nor kube-proxy
-# disabled (they don't join etcd, so the cluster section isn't relevant).
-- name: Render control-plane machine config patch
+- name: Render control-plane patches to secrets dir
   ansible.builtin.template:
-    src: "{{ talos_config_patches_dir }}/controlplane.yaml.j2"
-    dest: "{{ talos_config_rendered_controlplane_patch }}"
+    src: "{{ item.path }}"
+    dest: "{{ talos_config_rendered_patches_dir }}/cp-{{ item.path | basename | regex_replace('.j2$', '') }}"
     mode: "0600"
+  loop: "{{ talos_config_discovered_cp_patches.files | sort(attribute='path') }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
 
-- name: Generate Talos secrets bundle
-  ansible.builtin.command:
-    argv:
-      - talosctl
-      - gen
-      - secrets
-      - -o
-      - "{{ talos_config_secrets_file }}"
-    creates: "{{ talos_config_secrets_file }}"
+# --- Per-node raw patches from nodes.yaml ---
+# The config_render role generates per-node .yaml.j2 files under generated/nodes/
+# for nodes that have raw patch fragments in nodes.yaml. Discover and render them.
 
-# Generates controlplane.yaml, worker.yaml, and talosconfig into secrets_dir.
-# --config-patch (common) applies to all node types: sets machine.install.image.
-# --config-patch-control-plane applies only to the controlplane base:
-#   sets VIP interface and disables CNI/kube-proxy (Cilium takes those over).
-# Per-node customisation (hostname, nodeLabels, allowSchedulingOnControlPlanes)
-# is applied at apply-config time via --config-patch so each node gets its own.
-#
-# creates: guards re-generation; delete controlplane.yaml to force a regeneration
-# (e.g. after rotating secrets or bumping kubernetes_version).
-- name: Generate Talos machine configs
-  ansible.builtin.command:
-    argv:
+- name: Check if per-node patches directory exists
+  ansible.builtin.stat:
+    path: "{{ talos_config_generated_nodes_dir }}"
+  register: talos_config_nodes_dir_stat
+
+- name: Discover per-node patch templates
+  ansible.builtin.find:
+    paths: "{{ talos_config_generated_nodes_dir }}"
+    patterns: "*.yaml.j2"
+    file_type: file
+  register: talos_config_discovered_node_patches
+  when: talos_config_nodes_dir_stat.stat.exists
+
+- name: Render per-node patches to secrets dir
+  ansible.builtin.template:
+    src: "{{ item.path }}"
+    dest: "{{ talos_config_rendered_patches_dir }}/node-{{ item.path | basename | regex_replace('.j2$', '') }}"
+    mode: "0600"
+  loop: "{{ talos_config_discovered_node_patches.files | default([]) | sort(attribute='path') }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: talos_config_discovered_node_patches.files is defined and talos_config_discovered_node_patches.files | length > 0
+
+# Build a dict mapping node names to their --config-patch argv fragments.
+# Each node with a rendered per-node patch gets ['--config-patch', '@<path>'].
+# Nodes without per-node patches get an empty list (handled by | default([]) at use site).
+
+- name: Initialize per-node raw patch argv dict
+  ansible.builtin.set_fact:
+    talos_config_node_raw_patches: {}
+
+- name: Populate per-node raw patch argv dict
+  ansible.builtin.set_fact:
+    talos_config_node_raw_patches: >-
+      {{ talos_config_node_raw_patches | combine({
+           (item.path | basename | regex_replace('.yaml.j2$', '')):
+           ['--config-patch',
+            '@' ~ talos_config_rendered_patches_dir ~ '/node-' ~ (item.path | basename | regex_replace('.yaml.j2$', '')) ~ '.yaml']
+         }) }}
+  loop: "{{ talos_config_discovered_node_patches.files | default([]) | sort(attribute='path') }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: talos_config_discovered_node_patches.files is defined and talos_config_discovered_node_patches.files | length > 0
+
+# --- Build talosctl gen config command ---
+# Start with the base command, then append --config-patch and
+# --config-patch-control-plane flags in discovery order.
+
+- name: Build base gen-config argv
+  ansible.builtin.set_fact:
+    talos_config_gen_argv:
       - talosctl
       - gen
       - config
@@ -57,11 +127,159 @@
       - "{{ talos_config_secrets_dir }}"
       - --kubernetes-version
       - "{{ talos_config_kubernetes_version }}"
-      - --config-patch
-      - "@{{ talos_config_rendered_common_patch }}"
-      - --config-patch-control-plane
-      - "@{{ talos_config_rendered_controlplane_patch }}"
+
+- name: Append all-node --config-patch flags
+  ansible.builtin.set_fact:
+    talos_config_gen_argv: >-
+      {{ talos_config_gen_argv +
+         ['--config-patch',
+          '@' ~ talos_config_rendered_patches_dir ~ '/all-' ~ (item.path | basename | regex_replace('.j2$', ''))] }}
+  loop: "{{ talos_config_discovered_all_patches.files | sort(attribute='path') }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+
+- name: Append control-plane --config-patch-control-plane flags
+  ansible.builtin.set_fact:
+    talos_config_gen_argv: >-
+      {{ talos_config_gen_argv +
+         ['--config-patch-control-plane',
+          '@' ~ talos_config_rendered_patches_dir ~ '/cp-' ~ (item.path | basename | regex_replace('.j2$', ''))] }}
+  loop: "{{ talos_config_discovered_cp_patches.files | sort(attribute='path') }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+
+- name: Generate Talos secrets bundle
+  ansible.builtin.command:
+    argv:
+      - talosctl
+      - gen
+      - secrets
+      - -o
+      - "{{ talos_config_secrets_file }}"
+    creates: "{{ talos_config_secrets_file }}"
+
+# --- Regeneration tracking ---
+# talosctl gen config uses creates: controlplane.yaml to skip when configs
+# already exist. That makes generated patch changes stale on re-runs — editing
+# config/overrides and re-rendering patches has no effect until the operator
+# manually deletes controlplane.yaml. We track a SHA-256 signature of the gen
+# inputs (rendered patch file checksums + the full gen argv, which captures
+# cluster name, endpoint, kubernetes version, and the ordered patch set) in a
+# marker file. When the signature changes we remove the stale generated
+# configs (controlplane.yaml, worker.yaml, talosconfig) so the creates: guard
+# below lets gen config run again. secrets.yaml is never touched here — it has
+# its own creates: guard and rotating it would break the existing cluster's CA.
+#
+# The signature checksums the RENDERED patch files (in rendered-patches/),
+# not the source .yaml.j2 templates under generated/. Source templates contain
+# Jinja placeholders like {{ talos_installer_image }} whose value is resolved
+# at bootstrap time by the talos_schematic role — the source checksum is
+# stable across value changes, so it would miss a talos_version or schematic
+# bump. The rendered files have those placeholders resolved, so their
+# checksums move when talos_installer_image (or the VIP, certSANs, interface
+# name, etc.) changes. This makes the signature cover runtime-rendered inputs.
+
+- name: Build rendered patch file paths for regeneration signature
+  ansible.builtin.set_fact:
+    # Map each discovered source template to its rendered output path under
+    # rendered-patches/, using the same all-/cp-/node- prefixes the render
+    # tasks above write. The list is sorted for deterministic ordering.
+    talos_config_rendered_patch_paths: >-
+      {%- set paths = [] -%}
+      {%- for f in talos_config_discovered_all_patches.files | default([]) -%}
+        {%- set _ = paths.append(talos_config_rendered_patches_dir ~ '/all-' ~ (f.path | basename | regex_replace('.j2$', ''))) -%}
+      {%- endfor -%}
+      {%- for f in talos_config_discovered_cp_patches.files | default([]) -%}
+        {%- set _ = paths.append(talos_config_rendered_patches_dir ~ '/cp-' ~ (f.path | basename | regex_replace('.j2$', ''))) -%}
+      {%- endfor -%}
+      {%- for f in talos_config_discovered_node_patches.files | default([]) -%}
+        {%- set _ = paths.append(talos_config_rendered_patches_dir ~ '/node-' ~ (f.path | basename | regex_replace('.j2$', ''))) -%}
+      {%- endfor -%}
+      {{ paths | sort }}
+  changed_when: false
+
+- name: Stat rendered patch files for regeneration signature
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    checksum_algorithm: sha256
+    get_checksum: true
+  loop: "{{ talos_config_rendered_patch_paths }}"
+  loop_control:
+    label: "{{ item | basename }}"
+  register: talos_config_patch_stats
+  changed_when: false
+
+- name: Compute gen-config input signature
+  ansible.builtin.set_fact:
+    # Hash the argv (captures cluster name, endpoint, k8s version, ordered
+    # patch paths) together with rendered patch file checksums (captures
+    # resolved content — talos_installer_image, VIP, certSANs, etc.). to_json
+    # gives a deterministic serialisation of the dict; hash('sha256') produces
+    # a stable hex digest.
+    talos_config_gen_signature: >-
+      {{ {
+           'argv': talos_config_gen_argv,
+           'checksums': talos_config_patch_stats.results | map(attribute='stat.checksum') | list
+         } | to_json | hash('sha256') }}
+  changed_when: false
+
+- name: Read existing gen-config marker
+  ansible.builtin.slurp:
+    src: "{{ talos_config_secrets_dir }}/gen-config.signature"
+  register: talos_config_gen_marker
+  failed_when: false
+  changed_when: false
+  check_mode: false
+
+- name: Determine whether machine configs need regeneration
+  ansible.builtin.set_fact:
+    # Regen when the marker is missing (first run) or the signature differs
+    # (patch content or argv changed since last successful gen config).
+    talos_config_needs_regen: >-
+      {{ talos_config_gen_marker is failed
+         or (talos_config_gen_marker.content | default('') | b64decode | trim)
+            != talos_config_gen_signature }}
+  changed_when: false
+
+- name: Remove stale generated machine configs to force regeneration
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ talos_config_controlplane_config }}"
+    - "{{ talos_config_worker_config }}"
+    - "{{ talos_config_talosconfig }}"
+  when: talos_config_needs_regen
+
+# Generates controlplane.yaml, worker.yaml, and talosconfig into secrets_dir.
+# Patch ordering (all-node first, then control-plane; alphabetical within each):
+#   all/00-install.yaml.j2           → machine.install.image (+ optional Talos certSANs)
+#   all/10-cloud-provider.yaml.j2    → external cloud provider (hcloud CCM selected)
+#   all/90-user-raw.yaml.j2          → raw talos.patches.all fragments (if any)
+#   controlplane/00-network.yaml.j2  → VIP on private interface
+#   controlplane/10-cni-proxy.yaml.j2 → CNI none + proxy disabled (+ optional k8s certSANs)
+#   controlplane/90-user-raw.yaml.j2  → raw talos.patches.controlplane fragments (if any)
+#
+# Per-node customisation (hostname, nodeLabels, allowSchedulingOnControlPlanes)
+# is applied at apply-config time via --config-patch so each node gets its own.
+#
+# creates: guards re-generation; the signature logic above removes the stale
+# configs when inputs change. To force a full regeneration (e.g. after rotating
+# secrets), delete secrets.yaml AND the gen-config.signature marker by hand.
+- name: Generate Talos machine configs
+  ansible.builtin.command:
+    argv: "{{ talos_config_gen_argv }}"
     creates: "{{ talos_config_controlplane_config }}"
+
+# Record the signature of the inputs that produced the current machine configs.
+# Written only after gen config succeeds — if gen config fails the playbook
+# stops here and the old marker (or none) remains, so the next run retries.
+- name: Write gen-config signature marker
+  ansible.builtin.copy:
+    content: "{{ talos_config_gen_signature }}\n"
+    dest: "{{ talos_config_secrets_dir }}/gen-config.signature"
+    mode: "0600"
+  when: talos_config_needs_regen
 
 # talosctl gen config writes 0644; these embed the cluster CA and client
 # certs, so tighten them to owner-only (the secrets dir is already 0700).
@@ -124,6 +342,10 @@
 #   allowSchedulingOnControlPlanes (hybrid only): removes the
 #     node-role.kubernetes.io/control-plane:NoSchedule taint so workloads
 #     can schedule on hybrid nodes. Pure controlplane nodes keep the taint.
+#
+# These are role-required identity patches — they run AFTER any per-node raw
+# patches from nodes.yaml (if present) so that hostname/role labels are never
+# accidentally erased by user fragments.
 - name: Apply machine config to nodes in maintenance mode
   ansible.builtin.command:
     argv: >-
@@ -132,13 +354,14 @@
            '--file',
            talos_config_controlplane_config
            if hostvars[item.item].node_role in ['controlplane', 'hybrid']
-           else talos_config_worker_config,
-           '--config-patch',
-           '{"apiVersion":"v1alpha1","kind":"HostnameConfig","hostname":"' ~ item.item ~ '","auto":"off"}',
-           '--config-patch',
-           '{"machine":{"nodeLabels":{"node-role.kubernetes.io/' ~ hostvars[item.item].node_role ~ '":""}}}']
-          + (['--config-patch', '{"cluster":{"allowSchedulingOnControlPlanes":true}}']
-             if hostvars[item.item].node_role == 'hybrid' else [])) }}
+           else talos_config_worker_config]
+          + talos_config_node_raw_patches[item.item] | default([])
+           + ['--config-patch',
+              '{"apiVersion":"v1alpha1","kind":"HostnameConfig","hostname":"' ~ item.item ~ '","auto":"off"}',
+              '--config-patch',
+              '{"machine":{"nodeLabels":{"node-role.kubernetes.io/' ~ hostvars[item.item].node_role ~ '":""}}}']
+           + (['--config-patch', '{"cluster":{"allowSchedulingOnControlPlanes":true}}']
+              if hostvars[item.item].node_role == 'hybrid' else [])) }}
   loop: "{{ talos_config_mc_check.results }}"
   loop_control:
     label: "{{ item.item }}"
@@ -162,13 +385,14 @@
            '--file',
            talos_config_controlplane_config
            if hostvars[item.item].node_role in ['controlplane', 'hybrid']
-           else talos_config_worker_config,
-           '--config-patch',
-           '{"apiVersion":"v1alpha1","kind":"HostnameConfig","hostname":"' ~ item.item ~ '","auto":"off"}',
-           '--config-patch',
-           '{"machine":{"nodeLabels":{"node-role.kubernetes.io/' ~ hostvars[item.item].node_role ~ '":""}}}']
-          + (['--config-patch', '{"cluster":{"allowSchedulingOnControlPlanes":true}}']
-             if hostvars[item.item].node_role == 'hybrid' else [])) }}
+           else talos_config_worker_config]
+          + talos_config_node_raw_patches[item.item] | default([])
+           + ['--config-patch',
+              '{"apiVersion":"v1alpha1","kind":"HostnameConfig","hostname":"' ~ item.item ~ '","auto":"off"}',
+              '--config-patch',
+              '{"machine":{"nodeLabels":{"node-role.kubernetes.io/' ~ hostvars[item.item].node_role ~ '":""}}}']
+           + (['--config-patch', '{"cluster":{"allowSchedulingOnControlPlanes":true}}']
+              if hostvars[item.item].node_role == 'hybrid' else [])) }}
   loop: "{{ talos_config_mc_check.results }}"
   loop_control:
     label: "{{ item.item }}"

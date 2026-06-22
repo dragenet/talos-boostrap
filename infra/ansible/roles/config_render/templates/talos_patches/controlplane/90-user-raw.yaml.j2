@@ -1,0 +1,15 @@
+{{ config_render_header }}
+---
+# Layer 2 raw fragments: control-plane-only patches.
+# Source: talos.patches.controlplane (cluster.yaml)
+#
+# Each list entry is a verbatim Talos YAML fragment. All fragments are
+# concatenated into this single file, which is passed as one
+# --config-patch-control-plane to talosctl gen config.
+#
+# Talos constraint: a single patch file cannot modify the same document more
+# than once. If you need multiple patches to the same config document, combine
+# them into one fragment.
+{% for fragment in config_render_merged.talos.patches.controlplane %}
+{{ fragment | indent(0, first=false) }}
+{% endfor %}

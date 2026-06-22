@@ -1,0 +1,24 @@
+{{ config_render_header }}
+---
+# Manual provider bootstrap configuration.
+# Computed from features + provider (ADR-010).
+#
+# This file is generated ONLY when provider.name: manual in
+# config/overrides/cluster.yaml. The hcloud provider carries the same
+# variable inside its hcloud.yml instead. Always re-render after switching
+# providers before loading the new provider's inventory.
+#
+# bootstrap_pre_flux_components: list of components installed by
+# bootstrap-flux.yml before Flux reconciliation starts.
+# For manual provider: [cilium] when cni=cilium, empty when cni=none.
+{% if config_render_bootstrap_pre_flux_components | length > 0 %}
+bootstrap_pre_flux_components:
+{% for component in config_render_bootstrap_pre_flux_components %}
+  - {{ component }}
+{% endfor %}
+{% else %}
+# Explicit empty list — stays a list (not YAML null) so bootstrap-flux.yml can
+# iterate without a NoneType guard. Occurs when features.cni: none and no
+# provider-specific pre-Flux components apply.
+bootstrap_pre_flux_components: []
+{% endif %}

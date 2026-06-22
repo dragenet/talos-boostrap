@@ -1,0 +1,189 @@
+---
+# Render Talos patch templates/fragments (ADR-013 layered model).
+#
+# Generates ordered patch files under infra/talos/patches/generated/ from the
+# merged cluster.yaml config. The generated files are Jinja templates (.yaml.j2)
+# consumed by the talos_config role at bootstrap time.
+#
+# Output layout:
+#   generated/all/           — applied to all node types (--config-patch)
+#     00-install.yaml.j2     — install image + optional Talos API SANs
+#     10-cloud-provider.yaml.j2 — external cloud provider (hcloud CCM selected)
+#     90-user-raw.yaml.j2    — raw fragments from talos.patches.all (if any)
+#   generated/controlplane/  — applied to control-plane only (--config-patch-control-plane)
+#     00-network.yaml.j2     — VIP on private interface
+#     10-cni-proxy.yaml.j2   — CNI disabled + kube-proxy disabled (if features.cni=cilium)
+#     90-user-raw.yaml.j2    — raw fragments from talos.patches.controlplane (if any)
+#   generated/nodes/         — per-node patches from nodes.yaml (if any)
+#
+# Files are rendered in alphabetical order within each directory; later patches
+# win per Talos docs. The 00/10/90 numbering controls the layering:
+# structured helpers first, user raw fragments last.
+
+# --- Determine output directory (in-place or temp for check mode) ---
+# config_render_output_base is set by render_ansible.yml (runs before this).
+
+- name: Set Talos patches output directory
+  ansible.builtin.set_fact:
+    config_render_talos_patches_out: "{{ config_render_output_base }}/infra/talos/patches/generated"
+
+# --- Create output directories ---
+
+- name: Ensure generated/all directory exists
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/all"
+    state: directory
+    mode: "0755"
+
+- name: Ensure generated/controlplane directory exists
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/controlplane"
+    state: directory
+    mode: "0755"
+
+# --- All-node patches ---
+
+- name: Render all-node install patch (00-install.yaml.j2)
+  ansible.builtin.template:
+    src: talos_patches/all/00-install.yaml.j2
+    dest: "{{ config_render_talos_patches_out }}/all/00-install.yaml.j2"
+    mode: "0644"
+
+- name: Render all-node cloud-provider patch (10-cloud-provider.yaml.j2)
+  ansible.builtin.template:
+    src: talos_patches/all/10-cloud-provider.yaml.j2
+    dest: "{{ config_render_talos_patches_out }}/all/10-cloud-provider.yaml.j2"
+    mode: "0644"
+  when: config_render_cluster_external_cloud_provider_enabled | bool
+
+- name: Remove stale cloud-provider patch when external CCM is not selected
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/all/10-cloud-provider.yaml.j2"
+    state: absent
+  when: not (config_render_cluster_external_cloud_provider_enabled | bool)
+
+- name: Render all-node user-raw patch (90-user-raw.yaml.j2)
+  ansible.builtin.template:
+    src: talos_patches/all/90-user-raw.yaml.j2
+    dest: "{{ config_render_talos_patches_out }}/all/90-user-raw.yaml.j2"
+    mode: "0644"
+  when: config_render_merged.talos.patches.all | default([]) | length > 0
+
+- name: Remove stale all-node user-raw patch when no fragments configured
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/all/90-user-raw.yaml.j2"
+    state: absent
+  when: config_render_merged.talos.patches.all | default([]) | length == 0
+
+# --- Control-plane patches ---
+
+- name: Render control-plane network patch (00-network.yaml.j2)
+  ansible.builtin.template:
+    src: talos_patches/controlplane/00-network.yaml.j2
+    dest: "{{ config_render_talos_patches_out }}/controlplane/00-network.yaml.j2"
+    mode: "0644"
+
+- name: Render control-plane CNI/proxy patch (10-cni-proxy.yaml.j2)
+  ansible.builtin.template:
+    src: talos_patches/controlplane/10-cni-proxy.yaml.j2
+    dest: "{{ config_render_talos_patches_out }}/controlplane/10-cni-proxy.yaml.j2"
+    mode: "0644"
+  when: config_render_merged.features.cni == 'cilium'
+
+- name: Remove stale CNI/proxy patch when CNI is not cilium
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/controlplane/10-cni-proxy.yaml.j2"
+    state: absent
+  when: config_render_merged.features.cni != 'cilium'
+
+- name: Render control-plane user-raw patch (90-user-raw.yaml.j2)
+  ansible.builtin.template:
+    src: talos_patches/controlplane/90-user-raw.yaml.j2
+    dest: "{{ config_render_talos_patches_out }}/controlplane/90-user-raw.yaml.j2"
+    mode: "0644"
+  when: config_render_merged.talos.patches.controlplane | default([]) | length > 0
+
+- name: Remove stale control-plane user-raw patch when no fragments configured
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/controlplane/90-user-raw.yaml.j2"
+    state: absent
+  when: config_render_merged.talos.patches.controlplane | default([]) | length == 0
+
+# --- Per-node patches from nodes.yaml ---
+# Only generated when nodes.yaml has entries with non-empty patch lists.
+# Each node with patches gets a file: generated/nodes/<node-name>.yaml.j2
+
+- name: Compute nodes with raw patches
+  ansible.builtin.set_fact:
+    # Select nodes that carry a non-empty raw patch list.
+    # `length` is a filter, not a Jinja test, so selectattr(..., 'length', '>', 0)
+    # raises "No test named 'length'" as soon as any element is tested (it is
+    # silently inert on an empty list, which is why kube1's nodes: [] hid the
+    # bug). Use valid tests instead: keep nodes whose `patch` attribute is
+    # defined, drop None, drop empty lists. The result is a pure function of
+    # the input, so re-runs are deterministic and idempotent.
+    config_render_nodes_with_patches: >-
+      {{
+        config_render_nodes_list
+        | selectattr('patch', 'defined')
+        | rejectattr('patch', 'none')
+        | rejectattr('patch', 'equalto', [])
+        | list
+      }}
+
+- name: Ensure generated/nodes directory exists
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/nodes"
+    state: directory
+    mode: "0755"
+  when: config_render_nodes_with_patches | length > 0
+
+- name: Render per-node patch files
+  ansible.builtin.copy:
+    content: |
+      {{ config_render_header }}
+      ---
+      # Layer 2 raw fragments: per-node patches for {{ item.name }}.
+      # Source: nodes.yaml (nodes[?name == '{{ item.name }}'].patch)
+      #
+      # Applied as --config-patch at apply-config time BEFORE role-required
+      # patches (hostname, nodeLabels, hybrid scheduling). Order is deliberate:
+      # role-required identity patches run last so they win (later patches win
+      # per Talos docs) and user raw fragments cannot accidentally erase
+      # hostname/role labels.
+      {% for fragment in item.patch %}
+      {{ fragment }}
+      {% endfor %}
+    dest: "{{ config_render_talos_patches_out }}/nodes/{{ item.name }}.yaml.j2"
+    mode: "0644"
+  loop: "{{ config_render_nodes_with_patches }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: config_render_nodes_with_patches | length > 0
+
+# --- Clean up stale per-node patch files ---
+
+- name: Check if nodes directory exists
+  ansible.builtin.stat:
+    path: "{{ config_render_talos_patches_out }}/nodes"
+  register: config_render_nodes_dir_stat
+
+- name: Discover existing per-node patch files
+  ansible.builtin.find:
+    paths: "{{ config_render_talos_patches_out }}/nodes"
+    patterns: "*.yaml.j2"
+    file_type: file
+  register: config_render_existing_node_patches
+  when: config_render_nodes_dir_stat.stat.exists
+
+- name: Remove stale per-node patch files
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ config_render_existing_node_patches.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when:
+    - config_render_existing_node_patches.files is defined
+    - (item.path | basename | regex_replace('.yaml.j2$', ''))
+      not in (config_render_nodes_with_patches | map(attribute='name') | list)

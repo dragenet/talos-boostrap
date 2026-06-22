@@ -1,0 +1,124 @@
+---
+# config/defaults/cluster.yaml — TEMPLATE-OWNED defaults.
+#
+# This file contains sensible provider-agnostic defaults for any cluster built
+# from this template. Users never edit this file — cluster-specific choices go
+# in config/overrides/cluster.yaml. The render deep-merges defaults with
+# overrides (overrides win per-key) to produce the effective configuration.
+#
+# Template updates land here; pulling upstream improvements is conflict-free
+# against user-owned overrides (ADR-011).
+
+cluster:
+  # Cluster identity — override per deployment.
+  name: ""
+  # Kubernetes version pinned to a stable known-good release.
+  kubernetesVersion: v1.32.0
+  # Talos/Kubernetes API VIP — override per deployment.
+  # Single source of truth for the VIP: feeds both the Ansible cluster_vip var
+  # (cluster endpoint, cert SANs) and the Talos network patch (control-plane
+  # floating IP). Do NOT duplicate this under talos.network.vip — the renderer
+  # rejects that key to prevent silent divergence.
+  vip: ""
+  # Kubernetes API endpoint. Computed from vip by default; override only if
+  # the API is reached through a different address (e.g. external LB).
+  endpoint: "https://{{ cluster_vip }}:6443"
+  # Extra SANs for TLS certificates beyond defaults.
+  certSANs:
+    talos: []
+    kubernetes: []
+  # Full node_role → short code used only in hostnames (ADR-014).
+  nodeRoleShort:
+    controlplane: cp
+    hybrid: hb
+    worker: wk
+
+provider:
+  # Provider name: hcloud | manual. Determines which provider group_vars are
+  # rendered and which provider-gated features are allowed (ADR-012).
+  name: manual
+
+flux:
+  repoUrl: ""
+  repoBranch: main
+  path: ""
+
+talos:
+  # Talos Linux version — pin to a known-good release.
+  version: v1.13.3
+  extensions:
+    # Base extensions included in every image. Override to add provider-specific
+    # agents (e.g. qemu-guest-agent for Hetzner).
+    base: []
+    # User extension hook — added to base + feature-implied extensions.
+    # The render rejects direct overrides of the computed talos_extensions;
+    # users add via this key (ADR-011 compute-key rule).
+    extra: []
+  install:
+    # Disk selection for Talos system partition. null = Talos default.
+    disk: null
+    # CEL diskSelector expression (Talos v1.13+). Takes precedence over disk
+    # when both are set (ADR-013).
+    diskSelector: null
+  network:
+    # VIP lives at cluster.vip (single source of truth) — do not set it here.
+    # The renderer rejects talos.network.vip in overrides to prevent divergence.
+    defaultInterface:
+      # ADR-013 prefers deviceSelector (stable hardware identity) over
+      # interface names (eth0/eth1 can change). Set deviceSelector when real
+      # hardware identifiers are known; fall back to interface: otherwise.
+      interface: null
+      deviceSelector: null
+  # Raw Talos patch fragments (Layer 2, ADR-013). Applied in order after
+  # structured helpers; later patches win.
+  patches:
+    all: []
+    controlplane: []
+
+features:
+  # CNI plugin: cilium | none. "none" leaves in-cluster CNI management enabled
+  # ( Talos default); "cilium" disables it for pre-Flux Cilium install.
+  cni: cilium
+  certManager: false
+  # Ingress controller: none | envoy-gateway | traefik. Pick-one (ADR-012).
+  ingress: none
+  openebs: false
+  # Hetzner Cloud Controller Manager (CCM). When true the render emits
+  # `hcloud-ccm` into bootstrap_pre_flux_components and a Talos all-node patch
+  # setting cluster.externalCloudProvider.enabled so kubelet/kube-controller-manager
+  # run with --cloud-provider=external (the CCM clears the uninitialized taint
+  # and sets providerID/topology labels). DEFAULTS TO FALSE: the CCM installer
+  # (flux_bootstrap pre-Flux `hcloud-ccm` step) is feature work in a later slice
+  # (plan 2026-06-22-cilium-ccm-csi). Enabling this flag before the installer
+  # lands would taint nodes with no CCM to clear them — leave it false until
+  # that slice ships. Requires provider.name: hcloud and features.cni: cilium.
+  hcloudCcm: false
+  hcloudCsi: false
+
+# Storage volume definitions (ADR-013). User-owned list — replaces defaults.
+storage:
+  volumes: []
+
+# Hetzner Cloud provider defaults. Only used when provider.name: hcloud.
+hcloud:
+  location: nbg1
+  # Prioritized server type lists — first available in location wins.
+  serverTypes: []
+  serverTypesPerRole: {}
+  # Temporary builder for image-talos.yml — small type is fine.
+  builderServerTypes: []
+  privateNetworkName: ""
+  privateNetworkCidr: "10.0.0.0/16"
+  privateSubnetCidr: "10.0.0.0/24"
+  firewallName: ""
+  sshKeyName: ""
+  # false = scope API access to adminIps (recommended for stable IPs).
+  # true = open to 0.0.0.0/0 + ::/0 (for dynamic IPs; APIs remain mTLS).
+  firewallOpenAccess: false
+  adminIps: []
+  topology:
+    controlplane: 0
+    hybrid: 0
+    worker: 0
+  # Starting octet for node private IPs within the subnet.
+  serversIpOffset: 11

@@ -11,11 +11,17 @@ talos_config_worker_config: "{{ talos_config_secrets_dir }}/worker.yaml"
 talos_config_talosconfig: "{{ talos_config_secrets_dir }}/talosconfig"
 talos_config_kubeconfig: "{{ talos_config_secrets_dir }}/kubeconfig"
 
-# Rendered patch files (written to secrets dir, which is gitignored).
-# common-patch: install image — applied to all node types.
-# controlplane-patch: VIP + cluster CNI/proxy — applied to controlplane base only.
-talos_config_rendered_common_patch: "{{ talos_config_secrets_dir }}/common-patch.yaml"
-talos_config_rendered_controlplane_patch: "{{ talos_config_secrets_dir }}/controlplane-patch.yaml"
+# Generated patch directories (ADR-013 layered model).
+# The config_render role generates ordered .yaml.j2 templates here;
+# talos_config discovers them at bootstrap time and applies in order.
+talos_config_generated_patches_dir: "{{ talos_config_patches_dir }}/generated"
+talos_config_generated_all_dir: "{{ talos_config_generated_patches_dir }}/all"
+talos_config_generated_cp_dir: "{{ talos_config_generated_patches_dir }}/controlplane"
+talos_config_generated_nodes_dir: "{{ talos_config_generated_patches_dir }}/nodes"
+
+# Rendered patch output directory (inside secrets dir, which is gitignored).
+# Generated .yaml.j2 templates are rendered here before passing to talosctl.
+talos_config_rendered_patches_dir: "{{ talos_config_secrets_dir }}/rendered-patches"
 
 # Nodes that run the Talos control-plane config (etcd members):
 # hybrid nodes participate in etcd and the VIP; controlplane-only nodes do too.

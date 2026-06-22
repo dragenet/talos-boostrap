@@ -1,6 +1,8 @@
 # ADR-005: Cloud controller manager — enabled for cloud providers, disabled for metal
 
-**Status:** Accepted
+**Status:** Superseded by ADR-010
+
+> **Supersession note:** ADR-010 refactors the bootstrap architecture so that the provider CCM is still installed pre-Flux by Ansible (to clear the `uninitialized` taint in time for Flux), but is then **adopted by Flux** and reconciled from git as steady state. The "CCM runs outside Flux, not reconciled" consequence below no longer applies to kube1's refactored architecture; see ADR-010 §What goes where for the current ownership table. The provider-type distinction (cloud installs CCM, metal does not) still holds.
 
 ## Context
 

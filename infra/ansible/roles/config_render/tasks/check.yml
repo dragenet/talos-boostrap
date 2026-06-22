@@ -1,0 +1,211 @@
+---
+# Check/drift detection mode.
+#
+# When config_render_check is true, render_ansible.yml wrote to a temp directory
+# instead of in-place. This task diffs the temp output against the committed
+# generated files and reports any drift.
+#
+# Exit non-zero if drift is detected — suitable for CI/review gates.
+
+- name: Diff common cluster.yml
+  ansible.builtin.command:
+    argv:
+      - diff
+      - "-u"
+      - "{{ config_render_repo_root }}/infra/ansible/inventories/common/group_vars/all/cluster.yml"
+      - "{{ config_render_temp_dir }}/infra/ansible/inventories/common/group_vars/all/cluster.yml"
+  register: config_render_diff_cluster
+  failed_when: false
+  changed_when: false
+  check_mode: false
+
+- name: Diff common talos.yml
+  ansible.builtin.command:
+    argv:
+      - diff
+      - "-u"
+      - "{{ config_render_repo_root }}/infra/ansible/inventories/common/group_vars/all/talos.yml"
+      - "{{ config_render_temp_dir }}/infra/ansible/inventories/common/group_vars/all/talos.yml"
+  register: config_render_diff_talos
+  failed_when: false
+  changed_when: false
+  check_mode: false
+
+- name: Diff common flux.yml
+  ansible.builtin.command:
+    argv:
+      - diff
+      - "-u"
+      - "{{ config_render_repo_root }}/infra/ansible/inventories/common/group_vars/all/flux.yml"
+      - "{{ config_render_temp_dir }}/infra/ansible/inventories/common/group_vars/all/flux.yml"
+  register: config_render_diff_flux
+  failed_when: false
+  changed_when: false
+  check_mode: false
+
+- name: Diff hcloud group_vars
+  ansible.builtin.command:
+    argv:
+      - diff
+      - "-u"
+      - "{{ config_render_repo_root }}/infra/ansible/inventories/providers/hcloud/group_vars/all/hcloud.yml"
+      - "{{ config_render_temp_dir }}/infra/ansible/inventories/providers/hcloud/group_vars/all/hcloud.yml"
+  register: config_render_diff_hcloud
+  failed_when: false
+  changed_when: false
+  check_mode: false
+  when: config_render_merged.provider.name == 'hcloud'
+
+- name: Diff manual provider group_vars
+  ansible.builtin.command:
+    argv:
+      - diff
+      - "-u"
+      - "{{ config_render_repo_root }}/infra/ansible/inventories/providers/manual/group_vars/all/bootstrap.yml"
+      - "{{ config_render_temp_dir }}/infra/ansible/inventories/providers/manual/group_vars/all/bootstrap.yml"
+  register: config_render_diff_manual
+  failed_when: false
+  changed_when: false
+  check_mode: false
+  when: config_render_merged.provider.name == 'manual'
+
+# --- Talos generated patches drift detection ---
+# Recursive diff of the generated/ directory. Catches added, removed, and
+# modified patch templates.
+
+- name: Diff generated Talos patches
+  ansible.builtin.command:
+    argv:
+      - diff
+      - "-ru"
+      - "{{ config_render_repo_root }}/infra/talos/patches/generated"
+      - "{{ config_render_temp_dir }}/infra/talos/patches/generated"
+  register: config_render_diff_talos_patches
+  failed_when: false
+  changed_when: false
+  check_mode: false
+
+# --- Classify diff results by exit code ---
+# diff exit codes: 0 = identical, 1 = differences found (drift),
+# >1 = trouble (missing file, I/O error). The previous logic checked stdout
+# length only, which missed deleted-file drift: when the render no longer
+# produces a file, `diff -u committed temp` reports the missing path on stderr
+# with rc=2, leaving stdout empty — so the drift was silently ignored. Using
+# rc separates drift (rc=1) from errors (rc>1); stderr is included in both
+# reports so the cause is always visible. Skipped provider diffs (wrong
+# provider) default rc to 0, so they never count as drift or error.
+
+- name: Detect render drift and diff errors from exit codes
+  ansible.builtin.set_fact:
+    config_render_has_drift: >-
+      {{
+        (config_render_diff_cluster.rc | default(0) == 1) or
+        (config_render_diff_talos.rc | default(0) == 1) or
+        (config_render_diff_flux.rc | default(0) == 1) or
+        (config_render_diff_hcloud.rc | default(0) == 1) or
+        (config_render_diff_manual.rc | default(0) == 1) or
+        (config_render_diff_talos_patches.rc | default(0) == 1)
+      }}
+    config_render_has_diff_error: >-
+      {{
+        (config_render_diff_cluster.rc | default(0) > 1) or
+        (config_render_diff_talos.rc | default(0) > 1) or
+        (config_render_diff_flux.rc | default(0) > 1) or
+        (config_render_diff_hcloud.rc | default(0) > 1) or
+        (config_render_diff_manual.rc | default(0) > 1) or
+        (config_render_diff_talos_patches.rc | default(0) > 1)
+      }}
+  changed_when: false
+
+# Errors (rc > 1) are not drift — they mean a file the committed tree expects
+# is missing from render output (or vice versa), or an I/O problem. Surface
+# stderr so the operator sees exactly which path is missing.
+- name: Fail on diff errors (rc > 1)
+  ansible.builtin.fail:
+    msg: |
+      Render check hit a diff error (rc > 1). This is not drift — it indicates
+      a missing file or I/O problem. "No such file or directory" means the
+      render output is missing a file the committed tree expects, or the
+      committed tree references a path the render no longer produces.
+      Inspect stderr below.
+
+      {% if config_render_diff_cluster.stderr | default('') | length > 0 %}
+      --- cluster.yml stderr (rc={{ config_render_diff_cluster.rc | default('?') }}) ---
+      {{ config_render_diff_cluster.stderr }}
+      {% endif %}
+      {% if config_render_diff_talos.stderr | default('') | length > 0 %}
+      --- talos.yml stderr (rc={{ config_render_diff_talos.rc | default('?') }}) ---
+      {{ config_render_diff_talos.stderr }}
+      {% endif %}
+      {% if config_render_diff_flux.stderr | default('') | length > 0 %}
+      --- flux.yml stderr (rc={{ config_render_diff_flux.rc | default('?') }}) ---
+      {{ config_render_diff_flux.stderr }}
+      {% endif %}
+      {% if config_render_diff_hcloud.stderr | default('') | length > 0 %}
+      --- hcloud.yml stderr (rc={{ config_render_diff_hcloud.rc | default('?') }}) ---
+      {{ config_render_diff_hcloud.stderr }}
+      {% endif %}
+      {% if config_render_diff_manual.stderr | default('') | length > 0 %}
+      --- bootstrap.yml stderr (rc={{ config_render_diff_manual.rc | default('?') }}) ---
+      {{ config_render_diff_manual.stderr }}
+      {% endif %}
+      {% if config_render_diff_talos_patches.stderr | default('') | length > 0 %}
+      --- Talos generated patches stderr (rc={{ config_render_diff_talos_patches.rc | default('?') }}) ---
+      {{ config_render_diff_talos_patches.stderr }}
+      {% endif %}
+  when: config_render_has_diff_error | bool
+
+# Drift (rc == 1) — committed generated files differ from fresh render output.
+# Include stderr alongside stdout: `diff -ru` on directories emits "Only in"
+# deletion notices to stdout, but some diff implementations route missing-file
+# notes to stderr; surfacing both guarantees nothing is hidden.
+- name: Report drift
+  ansible.builtin.fail:
+    msg: |
+      Render drift detected. Committed generated files differ from render output.
+      Run `ansible-playbook playbooks/render-config.yml` to update generated files,
+      or review the diffs below.
+
+      {% if config_render_diff_cluster.rc | default(0) == 1 %}
+      --- cluster.yml drift ---
+      {{ config_render_diff_cluster.stdout }}
+      {{ config_render_diff_cluster.stderr | default('') }}
+      {% endif %}
+      {% if config_render_diff_talos.rc | default(0) == 1 %}
+      --- talos.yml drift ---
+      {{ config_render_diff_talos.stdout }}
+      {{ config_render_diff_talos.stderr | default('') }}
+      {% endif %}
+      {% if config_render_diff_flux.rc | default(0) == 1 %}
+      --- flux.yml drift ---
+      {{ config_render_diff_flux.stdout }}
+      {{ config_render_diff_flux.stderr | default('') }}
+      {% endif %}
+      {% if config_render_diff_hcloud.rc | default(0) == 1 %}
+      --- hcloud.yml drift ---
+      {{ config_render_diff_hcloud.stdout }}
+      {{ config_render_diff_hcloud.stderr | default('') }}
+      {% endif %}
+      {% if config_render_diff_manual.rc | default(0) == 1 %}
+      --- bootstrap.yml drift ---
+      {{ config_render_diff_manual.stdout }}
+      {{ config_render_diff_manual.stderr | default('') }}
+      {% endif %}
+      {% if config_render_diff_talos_patches.rc | default(0) == 1 %}
+      --- Talos generated patches drift ---
+      {{ config_render_diff_talos_patches.stdout }}
+      {{ config_render_diff_talos_patches.stderr | default('') }}
+      {% endif %}
+  when: config_render_has_drift | bool and not (config_render_has_diff_error | bool)
+
+- name: Report no drift
+  ansible.builtin.debug:
+    msg: "No render drift detected. Committed generated files match render output."
+  when: >-
+    not (config_render_has_drift | bool) and
+    not (config_render_has_diff_error | bool)
+
+- name: Clean up temporary directory
+  ansible.builtin.file:
+    path: "{{ config_render_temp_dir }}"
+    state: absent

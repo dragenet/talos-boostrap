@@ -1,0 +1,10 @@
+---
+# Render Flux base kustomization and cluster-vars ConfigMap.
+#
+# STUB — deferred to step 6 of the refactor plan.
+# When implemented, this will generate flux/infrastructure/controllers/base/
+# from the merged cluster.yaml features + provider selection.
+
+- name: Flux base render (stub)
+  ansible.builtin.debug:
+    msg: "Flux base rendering is deferred to step 6 of the refactor plan."

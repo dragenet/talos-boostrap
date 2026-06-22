@@ -1,0 +1,34 @@
+{{ config_render_header }}
+---
+# Layer 1 structured helper: control-plane VIP on the private-network interface.
+# Source: cluster.vip (cluster.yaml) — single source of truth for the VIP.
+#
+# cluster.vip feeds both the Ansible cluster_vip var (cluster endpoint, cert
+# SANs) and this Talos network patch. talos.network.vip is intentionally NOT
+# used — duplicating the VIP across two schema keys risks silent divergence.
+#
+# Uses deviceSelector when real hardware identifiers are supplied (ADR-013);
+# falls back to interface name until a safe deviceSelector is confirmed via
+# talosctl probe (see plan "Talos deviceSelector probe").
+#
+# network.interfaces merges on interface: or deviceSelector: (Talos docs).
+#
+# Replaces the machine.network section from pre-refactor controlplane.yaml.j2.
+machine:
+  network:
+    interfaces:
+{% set ds = config_render_merged.talos.network.defaultInterface.deviceSelector | default(none) %}
+{% if ds is not none and ds | length > 0 %}
+      - deviceSelector:
+{% for key, value in ds.items() %}
+          {{ key }}: {{ value | to_yaml | trim }}
+{% endfor %}
+        dhcp: true
+        vip:
+          ip: {{ config_render_merged.cluster.vip }}
+{% else %}
+      - interface: {{ config_render_merged.talos.network.defaultInterface.interface }}
+        dhcp: true
+        vip:
+          ip: {{ config_render_merged.cluster.vip }}
+{% endif %}

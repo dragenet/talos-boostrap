@@ -1,0 +1,153 @@
+---
+# config/overrides/cluster.yaml — USER-OWNED kube1-specific choices.
+#
+# This file carries every value that differs from the template defaults for
+# the kube1 cluster. The render deep-merges this over config/defaults/cluster.yaml
+# (overrides win per-key) and emits generated group_vars consumed by Ansible roles.
+#
+# Edit THIS file to change cluster configuration, then run:
+#   ansible-playbook playbooks/render-config.yml
+# Review the generated diffs before running live playbooks.
+#
+# Migrated from the pre-refactor hand-authored group_vars:
+#   inventories/common/group_vars/all/{cluster,talos,flux}.yml
+#   inventories/providers/hcloud/group_vars/all/hcloud.yml
+
+cluster:
+  name: kube1
+  kubernetesVersion: v1.36.0
+  vip: 10.0.0.10
+  # endpoint is computed from vip by default (https://<vip>:6443).
+  # Override only if the API is reached through a different address.
+  certSANs:
+    # Extra IPs / hostnames added to TLS certificates beyond the defaults.
+    # Both accept a mix of IPv4, IPv6, and DNS names.
+    #
+    # talos  → machine.certSANs  (Talos API, port 50000, all nodes)
+    # kubernetes → cluster.apiServer.certSANs (kube-apiserver, port 6443,
+    #                  controlplane + hybrid nodes only)
+    #
+    # Talos already includes the node's own IPs and the VIP by default. Add
+    # extras here when you reach the cluster through another address — e.g. a
+    # Tailscale IP, a Cloudflare Tunnel hostname, or an internal DNS alias:
+    #
+    #   talos:
+    #     - 100.64.0.5          # Tailscale IP for this node
+    #     - talos.ts.example.com
+    #   kubernetes:
+    #     - 100.64.0.10         # Tailscale IP used as the kubectl endpoint
+    #     - k8s.ts.example.com
+    talos: []
+    kubernetes: []
+  nodeRoleShort:
+    controlplane: cp
+    hybrid: hb
+    worker: wk
+
+provider:
+  name: hcloud
+
+flux:
+  repoUrl: ""
+  repoBranch: master
+  path: ./flux/clusters/kube1
+
+talos:
+  version: v1.13.3
+  extensions:
+    # System extensions included in the Talos image. The talos_schematic role
+    # resolves these into a deterministic schematic ID via factory.talos.dev.
+    # Adding or removing an extension triggers a factory POST on the next run.
+    base:
+      - siderolabs/qemu-guest-agent
+    extra: []
+  install:
+    disk: null
+    diskSelector: null
+  network:
+    # VIP is sourced from cluster.vip above (single source of truth).
+    # talos.network.vip is intentionally absent — the renderer rejects it.
+    defaultInterface:
+      # ADR-013 prefers deviceSelector (MAC / PCI identity) over interface
+      # names. Preserving interface: eth1 until a safe deviceSelector is
+      # confirmed via talosctl probe (see plan "Talos deviceSelector probe").
+      interface: eth1
+      deviceSelector: null
+  patches:
+    all: []
+    controlplane: []
+
+features:
+  cni: cilium
+  certManager: false
+  ingress: none
+  openebs: false
+  hcloudCsi: false
+
+storage:
+  volumes: []
+
+hcloud:
+  location: nbg1
+
+  # Prioritized server type lists — first type available in hcloud_location wins.
+  # Hetzner occasionally sells out specific types in a location; the fallback
+  # ensures provisioning succeeds without manual intervention.
+  serverTypes: [cx33, cx43]
+  # serverTypesPerRole:
+  #   controlplane: [cx23, cx33]   # etcd-only nodes can be smaller
+  #   hybrid: [cx33, cx43]
+  #   worker: [cx33, cx43]
+  serverTypesPerRole: {}
+  # For the temporary snapshot builder only; something small is fine.
+  builderServerTypes: [cx23, cx33, cpx22]
+
+  privateNetworkName: kube1
+  privateNetworkCidr: 10.0.0.0/16
+  privateSubnetCidr: 10.0.0.0/24
+  firewallName: kube1
+
+  # SSH key registered in Hetzner Cloud — used only during image build (rescue mode).
+  sshKeyName: kube1-provisioning
+
+  # ─── Admin access mode ─────────────────────────────────────────────────────
+  #
+  # firewallOpenAccess: false (default)
+  #   Scopes the Talos API (50000) and Kubernetes API (6443) rules to adminIps.
+  #   adminIps controls which IPs are allowed:
+  #     []             → auto-detect YOUR CURRENT public IP via ifconfig.me at
+  #                      provision time and firewall to that /32.
+  #                      !! LOCK-OUT RISK: if your IP changes later the OLD IP
+  #                      stays whitelisted — you silently lose access. Talos has
+  #                      no SSH fallback. Set a stable range when you have one.
+  #     ["1.2.3.4/32"] → pin specific CIDRs (recommended once you have a stable IP)
+  #
+  # firewallOpenAccess: true
+  #   Opens port 50000 and 6443 to 0.0.0.0/0 + ::/0 (the whole internet).
+  #   Use when your public IP is dynamic and frequently changes. The ports are
+  #   still mTLS/cert-authenticated (talosctl / kubectl) — "open" only widens
+  #   network reach, it does not disable auth. That said, it does expose endpoints
+  #   to internet-wide scanning, so prefer the admin-IP mode when your IP is stable.
+  #
+  firewallOpenAccess: true
+  adminIps: []
+
+  # How many nodes of each role to provision. Names are derived automatically:
+  # {{ cluster_name }}-{{ nodeRoleShort[role] }}{{ n }}
+  # Private IPs are assigned deterministically from the subnet base + index,
+  # ordered: controlplane nodes first, then hybrid, then worker.
+  # Current cluster: 3 hybrid nodes (kube1-hb1 → 10.0.0.11, etc.)
+  topology:
+    controlplane: 0
+    hybrid: 3
+    worker: 0
+
+  # Starting octet for node private IPs within privateSubnetCidr.
+  # Layout of 10.0.0.0/24:
+  #   .0  — network address
+  #   .1  — Hetzner gateway
+  #   .10 — cluster VIP (cluster.vip)
+  #   .11+ — nodes, assigned sequentially: controlplane → hybrid → worker
+  # serversIpOffset (11) is the first usable node address, deliberately placed
+  # past the VIP so node IPs never collide with the floating VIP.
+  serversIpOffset: 11

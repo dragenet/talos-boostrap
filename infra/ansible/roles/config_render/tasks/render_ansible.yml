@@ -1,0 +1,84 @@
+---
+# Render generated Ansible group_vars files from the merged configuration.
+#
+# Each generated file gets a header marking it as render-owned (ADR-011).
+# Variable names are preserved so existing roles keep working unchanged.
+#
+# Output locations:
+#   common group_vars: cluster.yml, talos.yml, flux.yml
+#   hcloud group_vars: hcloud.yml (non-secret only; hcloud.sops.yaml untouched)
+#   manual group_vars: bootstrap.yml (bootstrap_pre_flux_components)
+#
+# Only the selected provider's group_vars are rendered (gated by
+# provider.name). The other provider's generated directory is left untouched
+# and may be empty or stale — always load the inventory matching provider.name
+# in config/overrides/cluster.yaml. Switching providers requires a re-render
+# before using the new provider's inventory.
+#
+# In check mode (config_render_check=true), output goes to config_render_temp_dir
+# instead of in-place, so check.yml can diff against committed files.
+
+# --- Determine output directory (in-place or temp for check mode) ---
+
+- name: Set render output base directory
+  ansible.builtin.set_fact:
+    config_render_output_base: >-
+      {{ config_render_temp_dir | default(config_render_repo_root) }}
+
+# --- Common group_vars ---
+
+- name: Ensure common group_vars directory exists
+  ansible.builtin.file:
+    path: "{{ config_render_output_base }}/infra/ansible/inventories/common/group_vars/all"
+    state: directory
+    mode: "0755"
+
+- name: Render common cluster.yml
+  ansible.builtin.template:
+    src: group_vars/common/cluster.yml.j2
+    dest: "{{ config_render_output_base }}/infra/ansible/inventories/common/group_vars/all/cluster.yml"
+    mode: "0644"
+
+- name: Render common talos.yml
+  ansible.builtin.template:
+    src: group_vars/common/talos.yml.j2
+    dest: "{{ config_render_output_base }}/infra/ansible/inventories/common/group_vars/all/talos.yml"
+    mode: "0644"
+
+- name: Render common flux.yml
+  ansible.builtin.template:
+    src: group_vars/common/flux.yml.j2
+    dest: "{{ config_render_output_base }}/infra/ansible/inventories/common/group_vars/all/flux.yml"
+    mode: "0644"
+
+# --- hcloud provider group_vars ---
+
+- name: Ensure hcloud group_vars directory exists
+  ansible.builtin.file:
+    path: "{{ config_render_output_base }}/infra/ansible/inventories/providers/hcloud/group_vars/all"
+    state: directory
+    mode: "0755"
+  when: config_render_merged.provider.name == 'hcloud'
+
+- name: Render hcloud provider group_vars
+  ansible.builtin.template:
+    src: group_vars/hcloud/hcloud.yml.j2
+    dest: "{{ config_render_output_base }}/infra/ansible/inventories/providers/hcloud/group_vars/all/hcloud.yml"
+    mode: "0644"
+  when: config_render_merged.provider.name == 'hcloud'
+
+# --- manual provider group_vars ---
+
+- name: Ensure manual group_vars directory exists
+  ansible.builtin.file:
+    path: "{{ config_render_output_base }}/infra/ansible/inventories/providers/manual/group_vars/all"
+    state: directory
+    mode: "0755"
+  when: config_render_merged.provider.name == 'manual'
+
+- name: Render manual provider group_vars
+  ansible.builtin.template:
+    src: group_vars/manual/bootstrap.yml.j2
+    dest: "{{ config_render_output_base }}/infra/ansible/inventories/providers/manual/group_vars/all/bootstrap.yml"
+    mode: "0644"
+  when: config_render_merged.provider.name == 'manual'

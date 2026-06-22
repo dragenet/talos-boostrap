@@ -1,0 +1,25 @@
+---
+# render-config.yml — Config compiler (ADR-011).
+#
+# Reads config/defaults/cluster.yaml + config/overrides/cluster.yaml +
+# config/overrides/nodes.yaml, deep-merges (overrides win), validates, and
+# emits generated group_vars with current variable names preserved.
+#
+# This playbook runs on localhost, gathers no facts, and is side-effect-free
+# outside the repository tree. It does NOT contact Hetzner, Kubernetes, Talos
+# APIs, or Flux.
+#
+# Modes:
+#   Default: write generated files in-place.
+#   Check:   render to a temp directory and diff against committed generated
+#            files for drift detection. Use --extra-vars config_render_check=true.
+#
+# Usage:
+#   ansible-playbook playbooks/render-config.yml
+#   ansible-playbook playbooks/render-config.yml -e config_render_check=true
+- name: Render cluster configuration
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - role: config_render
+      tags: config_render

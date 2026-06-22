@@ -1,0 +1,28 @@
+{{ config_render_header }}
+---
+# Layer 1 structured helper: disable in-cluster CNI management and kube-proxy.
+# Source: features.cni (cluster.yaml)
+#
+# When features.cni is 'cilium', the CNI is installed pre-Flux by
+# bootstrap-flux.yml, so Talos must not manage it (cni.name: none).
+# Cilium replaces kube-proxy, so cluster.proxy is disabled too.
+#
+# Also includes optional kube-apiserver certSANs (cluster.certSANs.kubernetes).
+#
+# Replaces the cluster: section from pre-refactor controlplane.yaml.j2.
+cluster:
+  network:
+    cni:
+      name: none  # Cilium installed pre-Flux in bootstrap-flux.yml
+  proxy:
+    disabled: true  # Cilium replaces kube-proxy
+{% if config_render_merged.cluster.certSANs.kubernetes | default([]) | length > 0 %}
+  apiServer:
+    # Extra SANs for the kube-apiserver certificate (port 6443).
+    # Kubernetes already includes the VIP and cluster_endpoint; list here any
+    # additional addresses kubectl will use (Tailscale IPs, DNS aliases, etc.).
+    certSANs:
+{% for san in config_render_merged.cluster.certSANs.kubernetes %}
+      - {{ san }}
+{% endfor %}
+{% endif %}

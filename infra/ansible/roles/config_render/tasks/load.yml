@@ -1,0 +1,40 @@
+---
+# Load config inputs: defaults + overrides + nodes.
+# Deep-merges defaults with overrides (overrides win per-key).
+# User-owned lists (nodes, storage.volumes) replace defaults entirely.
+
+- name: Read defaults config
+  ansible.builtin.slurp:
+    src: "{{ config_render_defaults_path }}"
+  register: config_render_defaults_raw
+  check_mode: false
+
+- name: Read overrides config
+  ansible.builtin.slurp:
+    src: "{{ config_render_overrides_path }}"
+  register: config_render_overrides_raw
+  check_mode: false
+
+- name: Read nodes config
+  ansible.builtin.slurp:
+    src: "{{ config_render_nodes_path }}"
+  register: config_render_nodes_raw
+  check_mode: false
+
+- name: Parse config inputs from YAML
+  ansible.builtin.set_fact:
+    config_render_defaults: "{{ config_render_defaults_raw.content | b64decode | from_yaml }}"
+    config_render_overrides: "{{ config_render_overrides_raw.content | b64decode | from_yaml }}"
+    config_render_nodes: "{{ config_render_nodes_raw.content | b64decode | from_yaml }}"
+
+# Deep merge: maps merge recursively, overrides win. User-owned lists
+# (nodes, storage.volumes) are replaced entirely by overrides.
+- name: Deep-merge defaults with overrides
+  ansible.builtin.set_fact:
+    config_render_merged: >-
+      {{ config_render_defaults | combine(config_render_overrides, recursive=true) }}
+
+# Nodes is a user-owned list — replace, don't merge.
+- name: Set nodes from overrides
+  ansible.builtin.set_fact:
+    config_render_nodes_list: "{{ config_render_nodes.nodes | default([]) }}"

@@ -1,0 +1,8 @@
+{{ config_render_header }}
+---
+# Flux bootstrap configuration.
+# Source: config/overrides/cluster.yaml (flux: section)
+
+flux_repo_url: '{{ config_render_merged.flux.repoUrl | default('') }}'
+flux_repo_branch: {{ config_render_merged.flux.repoBranch }}
+flux_path: {{ config_render_merged.flux.path }}

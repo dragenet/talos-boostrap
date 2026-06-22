@@ -1,7 +1,14 @@
+# User-owned overlay — references the render-generated base/ and applies
+# optional user patches from patches/. See ADR-010, ADR-012.
+#
+# base/kustomization.yaml is render-owned: the render compiler populates it
+# with enabled catalog entries from _components/ based on cluster.yaml.
+# patches/ is user-owned: add strategic-merge patches there and reference them
+# below when component customization is needed.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-resources: []
-  # - cilium.yaml
-  # - cert-manager.yaml
-  # - hetzner-csi.yaml
-  # - openebs.yaml
+resources:
+  - base
+# Uncomment and extend when adding user patches from patches/:
+# patches:
+#   - path: patches/<example>.yaml

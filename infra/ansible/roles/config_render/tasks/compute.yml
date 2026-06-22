@@ -1,0 +1,97 @@
+---
+# Compute derived values from the merged configuration.
+#
+# These are computed keys (ADR-011) — they cannot be set directly in overrides.
+# The render derives them from feature flags, provider, and extension lists.
+
+# --- talos_extensions ---
+# Computed: talos.extensions.base ∪ feature-implied extensions ∪ talos.extensions.extra
+# Feature-implied extensions are currently empty (no feature adds Talos extensions
+# in the initial migration); the hook is here for future use.
+
+- name: Compute feature-implied Talos extensions
+  ansible.builtin.set_fact:
+    config_render_feature_extensions: >-
+      {{ [] }}
+
+- name: Compute final talos_extensions list
+  ansible.builtin.set_fact:
+    config_render_talos_extensions: >-
+      {{ (config_render_merged.talos.extensions.base | default([]))
+         + config_render_feature_extensions
+         + (config_render_merged.talos.extensions.extra | default([])) }}
+
+# --- bootstrap_pre_flux_components ---
+# Computed from features + provider (ADR-010).
+# cilium  → included when features.cni == 'cilium' (the pre-Flux CNI install).
+# hcloud-ccm → included ONLY when features.hcloudCcm is true AND provider is
+#              hcloud AND cni=cilium. The CCM clears the uninitialized node
+#              taint and sets providerID/topology labels.
+# manual: [cilium] when cni=cilium, [] when cni=none.
+# hcloud: [cilium] when cni=cilium; hcloud-ccm appended only when explicitly
+#         enabled via features.hcloudCcm (default false — the CCM installer is
+#         deferred to a later feature slice, plan 2026-06-22-cilium-ccm-csi;
+#         enabling it without the installer would taint nodes with no CCM to
+#         clear them).
+# Empty list when cni=none and no provider-specific pre-Flux components.
+
+- name: Compute bootstrap_pre_flux_components
+  ansible.builtin.set_fact:
+    config_render_bootstrap_pre_flux_components: >-
+      {{
+        (['cilium'] if config_render_merged.features.cni == 'cilium' else [])
+        + (['hcloud-ccm']
+           if (config_render_merged.features.hcloudCcm | default(false) | bool
+               and config_render_merged.provider.name == 'hcloud'
+               and config_render_merged.features.cni == 'cilium')
+           else [])
+      }}
+
+# --- cluster_external_cloud_provider_enabled ---
+# Computed: true iff hcloud CCM is in the pre-Flux component set, i.e. the
+# day-one cloud-integration stack includes the hcloud Cloud Controller Manager
+# (features.hcloudCcm and provider.name == 'hcloud' and features.cni == 'cilium'
+# today). When true the render emits a Talos all-node patch setting
+# cluster.externalCloudProvider so kubelet and kube-controller-manager run with
+# --cloud-provider=external and the CCM can initialise nodes (set providerID,
+# clear the node.cloudprovider.kubernetes.io/uninitialized taint, attach
+# topology labels).
+#
+# Derived from the pre-Flux list rather than provider.name alone so the flag
+# tracks the actual CCM selection: if hcloud-ccm is ever removed from the
+# pre-Flux set (e.g. features.hcloudCcm flips back to false), externalCloudProvider
+# is disabled too, avoiding the "uninitialized taint with no CCM to clear it"
+# failure mode. Manual/bare-metal providers never set this — there is no CCM to
+# clear the taint, so enabling it would permanently taint nodes and block
+# scheduling. Defaults to false: the CCM installer is feature work deferred to a
+# later slice, so the refactor is purely behavior-preserving.
+
+- name: Compute cluster_external_cloud_provider_enabled
+  ansible.builtin.set_fact:
+    config_render_cluster_external_cloud_provider_enabled: >-
+      {{ 'hcloud-ccm' in config_render_bootstrap_pre_flux_components }}
+
+# --- talos_installer_image (placeholder) ---
+# The real value is resolved at runtime by talos_schematic role via factory.
+# We set a placeholder here so generated group_vars document the pattern;
+# the actual value is only available after talos_schematic runs.
+# This is NOT the schematic ID — that requires a live factory POST.
+
+- name: Set path facts for generated group_vars
+  ansible.builtin.set_fact:
+    # These paths are anchored to playbook_dir, matching the pre-refactor
+    # convention. They are NOT schema-driven — they are Ansible runtime paths
+    # that depend on where the consuming playbook lives.
+    config_render_talos_secrets_dir: "{{ playbook_dir }}/../talos/secrets"
+    config_render_talos_patches_dir: "{{ playbook_dir }}/../talos/patches"
+
+# --- cluster_endpoint ---
+# Computed from cluster.vip if not explicitly overridden.
+
+- name: Compute cluster_endpoint from vip
+  ansible.builtin.set_fact:
+    config_render_cluster_endpoint: >-
+      {{ config_render_merged.cluster.endpoint
+         if config_render_merged.cluster.endpoint | default('') | length > 0
+            and '{{ cluster_vip }}' not in config_render_merged.cluster.endpoint
+         else 'https://' ~ config_render_merged.cluster.vip ~ ':6443' }}

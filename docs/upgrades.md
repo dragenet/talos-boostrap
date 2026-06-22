@@ -2,28 +2,38 @@
 
 ## Two upgrade paths
 
-| Scenario | Playbook | What it does |
+| Scenario | Playbook chain | What it does |
 |---|---|---|
-| Config-only change (no OS upgrade) | `bootstrap-talos.yml` | Re-applies machine config with `--mode no-reboot`; Talos applies live where possible |
-| OS version or schematic change | `upgrade-talos.yml` | Re-applies config, then upgrades each node's OS one at a time with a health check between |
+| Config-only change (no OS upgrade) | `render-config.yml` → `bootstrap-talos.yml` | Re-renders generated group_vars + Talos patches from `config/overrides/`, then re-applies machine config with `--mode no-reboot`; Talos applies live where possible |
+| OS version or schematic change | `render-config.yml` → `image-talos.yml` (hcloud) → `upgrade-talos.yml` | Re-renders, builds a new snapshot if needed, then upgrades each node's OS one at a time with a health check between |
 
 Always prefer `bootstrap-talos.yml` for config-only changes. Use `upgrade-talos.yml`
-only when `talos_version` or `talos_extensions` has changed — it reboots each node
+only when `talos.version` or `talos.extensions` has changed — it reboots each node
 sequentially, which takes longer and has higher blast radius.
+
+The render step (`playbooks/render-config.yml`) is the source of truth: it reads
+`config/overrides/cluster.yaml` and `config/overrides/nodes.yaml` and emits the
+generated `inventories/.../group_vars/` + `infra/talos/patches/generated/` tree.
+Hand-editing generated files is a no-op — the next render overwrites them.
 
 ## Upgrading the Talos version
 
-1. Edit `talos_version` in `inventories/common/group_vars/all/talos.yml`.
-2. (hcloud) Build a new snapshot — `image-talos.yml` checks labels first and skips
-   the build if a matching snapshot already exists:
+1. Edit `talos.version` in `config/overrides/cluster.yaml`.
+2. Re-render generated group_vars + Talos patches:
    ```bash
    cd infra/ansible
+   ansible-playbook playbooks/render-config.yml
+   ```
+   Review the generated diff in git.
+3. (hcloud) Build a new snapshot — `image-talos.yml` checks labels first and skips
+   the build if a matching snapshot already exists:
+   ```bash
    ansible-playbook -i inventories/common -i inventories/providers/hcloud playbooks/providers/hcloud/image-talos.yml
    ```
    The snapshot is named `talos-<version>-<schematic-short>` and labelled with
    `talos-version` + `talos-schematic-id`. `provision-infra.yml` resolves the ID
    automatically from these labels — no manual copy needed.
-3. Upgrade the running cluster:
+4. Upgrade the running cluster:
    ```bash
    ansible-playbook -i inventories/common -i inventories/providers/hcloud playbooks/upgrade-talos.yml
    ```
@@ -35,14 +45,15 @@ sequentially, which takes longer and has higher blast radius.
 Same procedure as version upgrade — a new schematic ID means a new installer image URL,
 which is treated as an OS-level change by Talos.
 
-1. Edit `talos_extensions` in `inventories/common/group_vars/all/talos.yml`.
-2. Delete the schematic ID cache so it's re-resolved from factory.talos.dev:
+1. Edit `talos.extensions.base` (and/or `talos.extensions.extra`) in `config/overrides/cluster.yaml`.
+2. Re-render and clear the schematic cache so it's re-resolved from factory.talos.dev:
    ```bash
+   cd infra/ansible
+   ansible-playbook playbooks/render-config.yml
    rm infra/talos/schematic_id
    ```
 3. (hcloud) Build a new snapshot:
    ```bash
-   cd infra/ansible
    ansible-playbook -i inventories/common -i inventories/providers/hcloud playbooks/providers/hcloud/image-talos.yml
    ```
 4. Upgrade the running cluster:
@@ -87,4 +98,4 @@ Talos keeps the previous image on disk. To roll back a single node:
 talosctl upgrade --nodes <IP> --talosconfig infra/talos/secrets/talosconfig \
   --image factory.talos.dev/installer/<previous-schematic-id>:<previous-version> --wait
 ```
-The previous schematic ID is in git history (`talos.yml`) or the Hetzner snapshot labels.
+The previous schematic ID is in git history (`config/overrides/cluster.yaml`) or the Hetzner snapshot labels.

@@ -1,0 +1,39 @@
+---
+# config_render role — main task orchestrator.
+#
+# Pipeline: load → validate → compute → (temp dir if check) → render → check.
+# All work is local; no API calls, no cluster contact.
+
+- name: Load config inputs
+  ansible.builtin.include_tasks: load.yml
+
+- name: Validate merged configuration
+  ansible.builtin.include_tasks: validate.yml
+
+- name: Compute derived values
+  ansible.builtin.include_tasks: compute.yml
+
+- name: Create temporary directory for check mode
+  ansible.builtin.tempfile:
+    state: directory
+    prefix: config_render_check_
+  register: config_render_tempdir
+  when: config_render_check | bool
+
+- name: Set temp output directory fact for check mode
+  ansible.builtin.set_fact:
+    config_render_temp_dir: "{{ config_render_tempdir.path }}"
+  when: config_render_check | bool
+
+- name: Render Ansible group_vars
+  ansible.builtin.include_tasks: render_ansible.yml
+
+- name: Render Talos patches (ADR-013 layered model)
+  ansible.builtin.include_tasks: render_talos.yml
+
+- name: Render Flux base (stub — step 6)
+  ansible.builtin.include_tasks: render_flux.yml
+
+- name: Check/drift detection
+  ansible.builtin.include_tasks: check.yml
+  when: config_render_check | bool
