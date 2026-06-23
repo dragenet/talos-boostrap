@@ -1,8 +1,14 @@
 ---
 description: Writes kube1 operational docs, runbooks, README, and CLAUDE status updates; does not write ADRs.
 mode: subagent
-model: opencode-go/qwen3.7-plus
+model: opencode-go/minimax-m3
 permission:
+  read:
+    "*": allow
+    "*.env": deny
+    "*.env.*": deny
+    "infra/talos/secrets/**": deny
+    "*.sops.decrypted.*": deny
   edit:
     "*": deny
     "docs/**": allow
@@ -10,23 +16,22 @@ permission:
     "CLAUDE.md": allow
     "docs/**/adrs/**": deny
   bash:
-    "*": ask
-    "graphify query*": allow
-    "*graphify query*": allow
-    "graphify explain*": allow
-    "*graphify explain*": allow
-    "graphify path*": allow
-    "*graphify path*": allow
-    "git status*": allow
-    "git diff*": allow
-    "git log*": allow
-    "echo *": deny
-    "* && *": deny
-    "* | head*": deny
-    "* | tail*": deny
+    "*": allow
+    "rm *": deny
+    "git push*": deny
+    "git reset --hard*": deny
+    "git checkout --*": deny
+    "git clean*": deny
+    "sops *": ask
+    "hcloud *": ask
+    "talosctl *": ask
+    "kubectl *": ask
+    "flux reconcile *": ask
+  glob: allow
+  grep: allow
+  list: allow
   task:
     "*": deny
-    repo-fast-context: allow
     web-fast-context: allow
   webfetch: allow
   websearch: allow
@@ -40,7 +45,7 @@ Write operational documentation: runbooks, how-to guides, README updates, and ho
 
 Use context subagents when needed:
 
-- Call `repo-fast-context` for current repo facts, paths, existing docs structure, or implementation status evidence.
+- Use graphify first for current repo facts, paths, existing docs structure, or implementation status evidence; then targeted reads for narrowed files.
 - Call `web-fast-context` for official docs links or externally-defined behavior that docs mention.
 - If both are needed and independent, call them in parallel before writing.
 

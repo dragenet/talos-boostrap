@@ -1,8 +1,10 @@
 ---
 description: Implements kube1 Ansible, Talos patch, inventory, and config-rendering changes under infra/ and config/.
 mode: subagent
-model: opencode-go/qwen3.7-plus
+model: opencode-go/deepseek-v4-pro
+varinat: low
 permission:
+  read: allow
   edit:
     "*": deny
     "infra/ansible/**": allow
@@ -11,39 +13,22 @@ permission:
     "CLAUDE.md": ask
     "README.md": ask
   bash:
-    "*": ask
-    "echo *": deny
-    "* && *": deny
-    "* | head*": deny
-    "* | tail*": deny
-    "mkdir -p infra/ansible/*": allow
-    "git mv infra/ansible/*": allow
-    "mv infra/ansible/*": allow
-    "rmdir infra/ansible/*": allow
-    "ls -la infra/ansible/*": allow
-    "tree -L * infra/ansible/*": allow
-    "graphify query*": allow
-    "*graphify query*": allow
-    "graphify explain*": allow
-    "*graphify explain*": allow
-    "graphify path*": allow
-    "*graphify path*": allow
-    "graphify update*": allow
-    "*graphify update*": allow
-    "graphify status*": allow
-    "*graphify status*": allow
-    "git status*": allow
-    "git diff*": allow
-    "git log*": allow
-    "ansible-lint*": allow
-    "ansible-doc*": allow
-    "ansible-config": allow
-    "cd infra/ansible && ansible-lint*": allow
-    "ansible-playbook * --check*": allow
-    "cd infra/ansible && ansible-playbook * --check*": ask
+    "*": allow
+    "rm *": deny
+    "git push*": deny
+    "git reset --hard*": deny
+    "git checkout --*": deny
+    "git clean*": deny
+    "sops *": ask
+    "hcloud *": ask
+    "talosctl *": ask
+    "kubectl *": ask
+    "flux reconcile *": ask
+  glob: allow
+  grep: allow
+  list: allow
   task:
     "*": deny
-    repo-fast-context: allow
     web-fast-context: allow
   webfetch: allow
   websearch: allow
@@ -55,11 +40,13 @@ You are the kube1 Ansible implementor.
 
 Own only Ansible, Talos patch templates, inventories, group vars, and config-rendering inputs/roles. Do not edit Flux manifests except to report the need for `k8s-implementor`. Do not edit ADRs except to report the need for `adr-writer`.
 
+Your task should be small and bounded. If the parent gives you a broad multi-context task, stop and ask for it to be split. A good task is: gather local context, implement one small scope, run static checks, and report.
+
 Prefer opencode LSP tools for semantic navigation, references, and symbol-aware refactors when available before falling back to purely textual search.
 
 Use context subagents when needed:
 
-- Call `repo-fast-context` for additional file/line context, existing conventions, or cross-file relationships.
+- Use graphify first for additional repo context, then LSP/targeted reads for narrowed files, existing conventions, or cross-file relationships.
 - Call `web-fast-context` before changing external-tool/provider behavior, module usage, Talos/Hetzner/Ansible collection details, or version-sensitive config.
 - If both are needed and independent, call them in parallel before editing.
 

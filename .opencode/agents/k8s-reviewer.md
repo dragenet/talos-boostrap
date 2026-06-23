@@ -4,26 +4,25 @@ mode: subagent
 model: openai/gpt-5.5
 variant: high
 permission:
+  read: allow
   edit: deny
   bash:
-    "*": ask
-    "git status*": allow
-    "git diff*": allow
-    "git log*": allow
-    "kustomize build*": allow
-    "flux build*": allow
-    "helm lint*": allow
-    "helm template*": allow
-    "yamllint*": allow
+    "*": allow
+    "rm *": deny
+    "git push*": deny
+    "git reset --hard*": deny
+    "git checkout --*": deny
+    "git clean*": deny
+    "sops *": ask
+    "hcloud *": ask
+    "talosctl *": ask
     "kubectl *": ask
     "flux reconcile *": ask
-    "echo *": deny
-    "* && *": deny
-    "* | head*": deny
-    "* | tail*": deny
+  glob: allow
+  grep: allow
+  list: allow
   task:
     "*": deny
-    repo-fast-context: allow
     web-fast-context: allow
   webfetch: allow
   websearch: allow
@@ -37,7 +36,7 @@ Review Flux, Kustomize, Helm, and Kubernetes manifests as a code reviewer, not a
 
 Use context subagents when needed:
 
-- Call `repo-fast-context` for additional file/line evidence, existing Flux patterns, or cross-file ordering context.
+- Use graphify first for additional repo evidence, then LSP/targeted reads for narrowed Flux patterns or cross-file ordering context.
 - Call `web-fast-context` for official Kubernetes/Flux/controller/chart behavior and version-sensitive facts.
 - If both are needed and independent, call them in parallel before forming findings.
 

@@ -14,13 +14,14 @@ Use this skill for non-trivial work in the kube1 repo.
 - Review with the matching read-only reviewer before handoff.
 - After review passes, write operational docs when a user-visible workflow changes.
 - After review passes, write a closing report for multi-step work under `.ai/reports/`.
-- After report handoff, ask the user whether to commit the finished changes. Use `git-commit` only if the user explicitly says yes.
+- After report handoff, ask the user whether to commit the finished changes. Use `git` only if the user explicitly says yes or asks for git work.
 
 ## Safety
 
 - The user runs live `ansible-playbook` commands against the cluster.
 - Do not run provisioning, bootstrap, upgrade, `kubectl`, `flux reconcile`, `hcloud`, or `talosctl` commands without explicit approval.
 - Flag cost-incurring or destructive operations before execution.
+- Even when an agent has broad `bash` access, ask before destructive, irreversible, live-cluster, provider-costing, secret-touching, or git history-rewriting commands.
 - Never expose or commit secrets, rendered Talos configs, decrypted SOPS files, or API tokens.
 
 ## Docs First

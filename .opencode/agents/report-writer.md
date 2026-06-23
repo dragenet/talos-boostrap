@@ -3,18 +3,25 @@ description: Writes concise kube1 closing reports under .ai/reports/ after imple
 mode: subagent
 model: opencode-go/minimax-m3
 permission:
+  read: allow
   edit:
     "*": deny
     ".ai/reports/**": allow
   bash:
-    "*": ask
-    "git status*": allow
-    "git diff*": allow
-    "git log*": allow
-    "echo *": deny
-    "* && *": deny
-    "* | head*": deny
-    "* | tail*": deny
+    "*": allow
+    "rm *": deny
+    "git push*": deny
+    "git reset --hard*": deny
+    "git checkout --*": deny
+    "git clean*": deny
+    "sops *": ask
+    "hcloud *": ask
+    "talosctl *": ask
+    "kubectl *": ask
+    "flux reconcile *": ask
+  glob: allow
+  grep: allow
+  list: allow
   task: deny
   webfetch: deny
   websearch: deny

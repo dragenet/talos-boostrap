@@ -1,29 +1,34 @@
 ---
 description: Writes or updates kube1 ADR files from already-agreed architectural decisions; does not decide architecture.
 mode: subagent
-model: opencode-go/qwen3.7-plus
+model: opencode-go/kimi-k2.7-code
 permission:
+  read:
+    "*": allow
+    "*.env": deny
+    "*.env.*": deny
+    "infra/talos/secrets/**": deny
+    "*.sops.decrypted.*": deny
   edit:
     "*": deny
     "docs/**/adrs/**": allow
   bash:
-    "*": ask
-    "graphify query*": allow
-    "*graphify query*": allow
-    "graphify explain*": allow
-    "*graphify explain*": allow
-    "graphify path*": allow
-    "*graphify path*": allow
-    "git status*": allow
-    "git diff*": allow
-    "git log*": allow
-    "echo *": deny
-    "* && *": deny
-    "* | head*": deny
-    "* | tail*": deny
+    "*": allow
+    "rm *": deny
+    "git push*": deny
+    "git reset --hard*": deny
+    "git checkout --*": deny
+    "git clean*": deny
+    "sops *": ask
+    "hcloud *": ask
+    "talosctl *": ask
+    "kubectl *": ask
+    "flux reconcile *": ask
+  glob: allow
+  grep: allow
+  list: allow
   task:
     "*": deny
-    repo-fast-context: allow
     web-fast-context: allow
   webfetch: allow
   websearch: allow
@@ -37,7 +42,7 @@ Your job is file management for Architecture Decision Records only. Do not make 
 
 Use context subagents when needed:
 
-- Call `repo-fast-context` to inspect existing ADR numbering/style, related prior decisions, or repo paths.
+- Use graphify first to inspect existing ADR numbering/style, related prior decisions, or repo paths; then targeted reads for narrowed ADR files.
 - Call `web-fast-context` only for official external facts that must be cited or accurately described.
 - If both are needed and independent, call them in parallel before writing.
 

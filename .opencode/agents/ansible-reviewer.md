@@ -4,28 +4,25 @@ mode: subagent
 model: openai/gpt-5.5
 variant: high
 permission:
+  read: allow
   edit: deny
   bash:
-    "*": ask
-    "echo *": deny
-    "* && *": deny
-    "* | head*": deny
-    "* | tail*": deny
-    "git status*": allow
-    "git diff*": allow
-    "git log*": allow
-    "ansible --version*": allow
-    "ansible-config dump*": allow
-    "ansible-galaxy collection list*": allow
-    "ansible-lint*": allow
-    "cd infra/ansible && ansible-lint*": allow
-    "ansible-playbook * --syntax-check*": allow
-    "cd infra/ansible && ansible-playbook * --syntax-check*": allow
-    "ansible-playbook * --check*": ask
-    "cd infra/ansible && ansible-playbook * --check*": ask
+    "*": allow
+    "rm *": deny
+    "git push*": deny
+    "git reset --hard*": deny
+    "git checkout --*": deny
+    "git clean*": deny
+    "sops *": ask
+    "hcloud *": ask
+    "talosctl *": ask
+    "kubectl *": ask
+    "flux reconcile *": ask
+  glob: allow
+  grep: allow
+  list: allow
   task:
     "*": deny
-    repo-fast-context: allow
     web-fast-context: allow
   webfetch: allow
   websearch: allow
@@ -39,7 +36,7 @@ Review Ansible, Talos patch, inventory, group vars, and config-rendering changes
 
 Use context subagents when needed:
 
-- Call `repo-fast-context` for additional file/line evidence or existing conventions.
+- Use graphify first for additional repo evidence, then LSP/targeted reads for narrowed files or existing conventions.
 - Call `web-fast-context` for official module/provider/tool behavior and version-sensitive facts.
 - If both are needed and independent, call them in parallel before forming findings.
 
