@@ -8,15 +8,16 @@ Cluster components (cert-manager, ingress, OpenEBS, CSI, …) are not a fixed se
 
 ## Decision
 
-Components form a **catalog** of template-owned bases under `flux/infrastructure/controllers/_components/`. A cluster's selection is rendered into the `base/` kustomization from `cluster.yaml` `features:` (see ADR-011). **Enabling a feature is structural** (which component the kustomization references) — never a runtime value, because kustomize has no conditionals.
+Components form a **catalog** of template-owned bases under `flux/infrastructure/controllers/_components/`. A cluster's **feature-catalog** selection is rendered into the `base/` kustomization from `cluster.yaml` `features:` (see ADR-011). Core bootstrap components (CNI, CCM) are also rendered into `base/` from their own top-level config keys, not from `features:` (see ADR-002 and ADR-005). **Enabling a feature is structural** (which component the kustomization references) — never a runtime value, because kustomize has no conditionals.
 
 ### Taxonomy
 
 | Type | Examples | Toggle | Ansible? |
 |---|---|---|---|
+| **core bootstrap** | CNI (`cni.name`), CCM (`cloud_controller_manager.enabled`) | top-level core config keys, CCM resolved per `provider.name` | yes — pre-Flux install by Ansible, then Flux adopts |
 | **pure-Flux** | cert-manager, ingress (envoy-gateway / traefik) | `features:` → render writes `base/` | render to enable; patch is git-only |
-| **Talos-coupled** | `cni`, openebs | `features:` → render writes `base/` **and** the Talos patch | yes (Talos half) |
-| **provider-gated** | Hetzner CSI, CCM | provider overlay (`resources:`) | provider choice; CCM is pre-Flux |
+| **Talos-coupled** | openebs | `features:` → render writes `base/` **and** the Talos patch | yes (Talos half) |
+| **provider-gated** | Hetzner CSI | provider overlay (`resources:`) | provider choice |
 | **secret-backed** | cert-manager (Cloudflare), Tailscale | feature + SOPS secret in git | only the generic `sops-age` inject |
 
 ### Customization & eject

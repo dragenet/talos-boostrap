@@ -1,0 +1,136 @@
+---
+# Install hcloud Cloud Controller Manager as a Helm release before Flux
+# reconciliation starts.
+#
+# The CCM clears the node.cloudprovider.kubernetes.io/uninitialized:NoSchedule
+# taint that Talos applies when cluster.externalCloudProvider is enabled
+# (via the generated Talos patch). Without the CCM, nodes remain tainted and
+# pods (including Flux controllers) cannot schedule.
+#
+# The chart reads its API token from Secret "hcloud" key "token" by default
+# (env.HCLOUD_TOKEN.valueFrom.secretKeyRef in the chart's values.yaml).
+# We create this Secret from the SOPS-encrypted hcloud_token before installing
+# the Helm release. The Secret is never managed by Flux — the HelmRelease
+# references it only through chart defaults, so no plaintext token reaches Git.
+#
+# Token handling:
+#   no_log: true on the Secret creation task ensures the token value never
+#   appears in Ansible output or logs. The hcloud_token variable comes from
+#   the SOPS-decrypted hcloud.sops.yaml group vars.
+
+# --- Create hcloud token Secret ---
+# kubernetes.core.k8s with state=present is idempotent: it creates the Secret
+# if it doesn't exist, or re-applies it if the token has changed. The Secret
+# is named "hcloud" (key "token") to match the CCM chart's default envFrom.
+# Namespace matches the Helm release namespace (hcloud-ccm-system).
+
+- name: Create hcloud token Secret for CCM
+  kubernetes.core.k8s:
+    kubeconfig: "{{ flux_bootstrap_kubeconfig }}"
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ flux_bootstrap_hcloud_ccm_secret_name }}"
+        namespace: "{{ flux_bootstrap_hcloud_ccm_namespace }}"
+      type: Opaque
+      stringData:
+        token: "{{ hcloud_token }}"
+  no_log: true  # hcloud_token is a secret — never appear in output
+
+# --- Install hcloud CCM Helm release ---
+# Uses the same release name, namespace, chart, and values as the Flux
+# HelmRelease in _components/providers/hcloud/ccm/helmrelease.yaml for
+# Flux adoption. networking.enabled is false — Cilium uses VXLAN tunnel,
+# so the CCM route controller is not needed (ADR-005).
+
+- name: Install or upgrade hcloud CCM Helm release
+  kubernetes.core.helm:
+    kubeconfig: "{{ flux_bootstrap_kubeconfig }}"
+    name: "{{ flux_bootstrap_hcloud_ccm_release_name }}"
+    chart_ref: "{{ flux_bootstrap_hcloud_ccm_chart_name }}"
+    chart_repo_url: "{{ flux_bootstrap_hcloud_ccm_chart_repo_url }}"
+    chart_version: "{{ flux_bootstrap_hcloud_ccm_chart_version }}"
+    release_namespace: "{{ flux_bootstrap_hcloud_ccm_namespace }}"
+    create_namespace: false
+    values: "{{ flux_bootstrap_hcloud_ccm_values }}"
+    wait: true
+    timeout: "{{ flux_bootstrap_hcloud_ccm_timeout }}"
+    update_repo_cache: true
+  register: flux_bootstrap_hcloud_ccm_helm
+
+# --- CCM readiness gate ---
+# The CCM's contract with external cloud provider mode is:
+#   1. Clear the node.cloudprovider.kubernetes.io/uninitialized:NoSchedule
+#      taint from every node (Talos applies this when
+#      cluster.externalCloudProvider is enabled).
+#   2. Set spec.providerID on every node, beginning with "hcloud://"
+#      (the CCM derives this from the Hetzner server ID).
+#
+# A mere Ready condition (kubectl wait --for=condition=Ready) is insufficient:
+# nodes can report Ready while still tainted during CCM startup. Without
+# explicit contract checks, Flux bootstrap would proceed too early — Flux
+# controllers would fail to schedule on tainted nodes.
+#
+# The CCM typically clears the taint and sets providerID within 30s of the
+# deployment becoming Ready. Each check retries for up to 2 minutes total.
+
+- name: Verify CCM deployment is ready
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ flux_bootstrap_kubeconfig }}"
+      - rollout
+      - status
+      - deployment/hcloud-cloud-controller-manager
+      - --namespace
+      - "{{ flux_bootstrap_hcloud_ccm_namespace }}"
+      - --timeout
+      - "{{ flux_bootstrap_hcloud_ccm_timeout }}"
+  register: flux_bootstrap_ccm_deployment_ready
+  changed_when: false
+
+# Verify contract part 1: the uninitialized taint must be absent from all nodes.
+# We dump every taint key on every node and assert the uninitialized key appears
+# nowhere in the output. Once the taint is gone, the next check proceeds.
+- name: Verify CCM cleared the uninitialized taint on all nodes  # noqa: jinja[invalid] (go-template {{ }} not Jinja2)
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ flux_bootstrap_kubeconfig }}"
+      - get
+      - nodes
+      - -o
+      - go-template={{ range .items }}{{ range .spec.taints }}{{ .key }}{{ "\n" }}{{ end }}{{ end }}
+  register: flux_bootstrap_ccm_taints
+  changed_when: false
+  retries: 12
+  delay: 10
+  until: "'node.cloudprovider.kubernetes.io/uninitialized' not in flux_bootstrap_ccm_taints.stdout"
+
+# Verify contract part 2: every node must have spec.providerID set and it must
+# start with "hcloud://". We extract all providerID values (one per line) and
+# reject any that don't match the "hcloud://" prefix. An empty result confirms
+# all nodes satisfy the contract.
+- name: Verify CCM set providerID (hcloud://) on all nodes
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ flux_bootstrap_kubeconfig }}"
+      - get
+      - nodes
+      - -o
+      - jsonpath={range .items[*]}{.spec.providerID}{"\n"}{end}
+  register: flux_bootstrap_ccm_provider_ids
+  changed_when: false
+  retries: 12
+  delay: 10
+  until: >-
+    flux_bootstrap_ccm_provider_ids.stdout_lines
+    | reject('match', '^hcloud://')
+    | list
+    | length == 0

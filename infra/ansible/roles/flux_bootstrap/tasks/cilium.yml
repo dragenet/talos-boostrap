@@ -1,0 +1,90 @@
+---
+# Install Cilium CNI as a Helm release before Flux reconciliation starts.
+#
+# Cilium is the first pre-Flux component: without it, pods cannot schedule
+# (CNI is a hard prerequisite for kubelet). The install uses the same release
+# name, namespace, and chart version as the Flux HelmRelease in
+# flux/infrastructure/controllers/_components/cilium/helmrelease.yaml so
+# Flux detects the existing release and adopts it on first reconciliation.
+#
+# Values include both the Flux-adopted set (kubeProxyReplacement, tunnel
+# routing, KubePrism endpoint) and Talos-required values not yet present in
+# the Flux HelmRelease (cgroup mounts, securityContext capabilities, BPF
+# legacy routing, IPAM mode). See defaults/main.yml for the full set.
+#
+# kubernetes.core.helm is idempotent: it compares the desired state against
+# the current release and only reports changed when values, chart version,
+# or release state differ. check_mode is supported — the module reports
+# whether changes would occur without applying them.
+
+- name: Install or upgrade Cilium Helm release
+  kubernetes.core.helm:
+    kubeconfig: "{{ flux_bootstrap_kubeconfig }}"
+    name: "{{ flux_bootstrap_cilium_release_name }}"
+    chart_ref: "{{ flux_bootstrap_cilium_chart_name }}"
+    chart_repo_url: "{{ flux_bootstrap_cilium_chart_repo_url }}"
+    chart_version: "{{ flux_bootstrap_cilium_chart_version }}"
+    release_namespace: "{{ flux_bootstrap_cilium_namespace }}"
+    create_namespace: false  # cilium-system is ensured by the namespaces task
+    values: "{{ flux_bootstrap_cilium_values }}"
+    wait: true
+    timeout: "{{ flux_bootstrap_cilium_timeout }}"
+    update_repo_cache: true
+  # helm module handles idempotency internally — it inspects the current
+  # release and only performs upgrade/install when the desired state differs.
+  register: flux_bootstrap_cilium_helm
+
+- name: Verify Cilium daemonset is ready on all nodes
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ flux_bootstrap_kubeconfig }}"
+      - rollout
+      - status
+      - daemonset/cilium
+      - --namespace
+      - "{{ flux_bootstrap_cilium_namespace }}"
+      - --timeout
+      - "{{ flux_bootstrap_cilium_timeout }}"
+  register: flux_bootstrap_cilium_ds_ready
+  changed_when: false
+
+- name: Verify Cilium operator is ready
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ flux_bootstrap_kubeconfig }}"
+      - rollout
+      - status
+      - deployment/cilium-operator
+      - --namespace
+      - "{{ flux_bootstrap_cilium_namespace }}"
+      - --timeout
+      - "{{ flux_bootstrap_cilium_timeout }}"
+  register: flux_bootstrap_cilium_op_ready
+  changed_when: false
+
+# After Cilium is installed, CoreDNS pods should transition from Pending to
+# Running. Wait for the deployment to be available as a proxy for DNS health.
+# If CoreDNS is still Pending, subsequent Helm installs (CCM, Flux) will fail
+# to resolve image registries and chart repos.
+- name: Wait for CoreDNS to be ready
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ flux_bootstrap_kubeconfig }}"
+      - rollout
+      - status
+      - deployment/coredns
+      - --namespace
+      - kube-system
+      - --timeout
+      - 5m
+  register: flux_bootstrap_cilium_coredns
+  changed_when: false
+  # CoreDNS might be named differently depending on Talos version.
+  # Tolerate failure here — the CCM and Flux steps will surface DNS issues.
+  failed_when: false

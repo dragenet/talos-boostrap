@@ -1,0 +1,15 @@
+---
+# HelmRepository for Hetzner Cloud charts.
+#
+# Lives in hcloud-ccm-system alongside the CCM HelmRelease it serves.
+# Note: hcloud-csi (future) will need its own HelmRepository in its own
+# namespace (hcloud-csi-system) since Flux HelmRelease sourceRef is
+# same-namespace by default; HelmRepositories are cheap.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: hcloud
+  namespace: hcloud-ccm-system
+spec:
+  interval: 1h
+  url: https://charts.hetzner.cloud

@@ -57,33 +57,46 @@
     quiet: true
   when: config_render_merged.features.hcloudCsi | default(false) | bool
 
-# hcloudCcm (Cloud Controller Manager) requires the hcloud provider and the
-# cilium CNI. The CCM is installed pre-Flux alongside Cilium and clears the
-# uninitialized node taint; without cilium as the CNI the bootstrap_pre_flux
-# list drops hcloud-ccm silently, so fail fast here rather than let the flag
-# appear enabled while having no effect.
-- name: Validate hcloudCcm requires hcloud provider and cilium CNI
+# --- cloud_controller_manager tri-state (ADR-005) ---
+# Graduated from features.hcloudCcm, June 2026 migration.
+# Valid values: auto, true, false. auto resolves at compute time per provider.name.
+
+- name: Validate cloud_controller_manager.enabled is pick-one (auto / true / false)
+  ansible.builtin.assert:
+    that:
+      - config_render_merged.cloud_controller_manager.enabled | default('auto') in ['auto', true, false]
+    fail_msg: >-
+      cloud_controller_manager.enabled must be one of: auto, true, false.
+      Got '{{ config_render_merged.cloud_controller_manager.enabled | default('') }}'.
+    quiet: true
+
+# When the operator explicitly sets enabled: true, the provider MUST have a
+# supported CCM (hcloud only today) and the CNI must be cilium (the CCM installs
+# pre-Flux alongside Cilium; without cilium the bootstrap_pre_flux list drops
+# hcloud-ccm silently). Fail fast here so the operator knows the flag has no
+# effect. auto is excluded from this check — it resolves at compute time.
+- name: Validate cloud_controller_manager true requires hcloud provider and cilium CNI
   ansible.builtin.assert:
     that:
       - config_render_merged.provider.name == 'hcloud'
-      - config_render_merged.features.cni == 'cilium'
+      - config_render_merged.cni.name == 'cilium'
     fail_msg: >-
-      features.hcloudCcm: true requires provider.name: hcloud and
-      features.cni: cilium (the CCM installs pre-Flux alongside Cilium).
+      cloud_controller_manager.enabled: true requires provider.name: hcloud and
+      cni.name: cilium (the CCM installs pre-Flux alongside Cilium).
       Got provider '{{ config_render_merged.provider.name | default('') }}'
-      and cni '{{ config_render_merged.features.cni | default('') }}'.
+      and cni '{{ config_render_merged.cni.name | default('') }}'.
     quiet: true
-  when: config_render_merged.features.hcloudCcm | default(false) | bool
+  when: config_render_merged.cloud_controller_manager.enabled | default('auto') is sameas true
 
 # --- Feature constraints (ADR-012) ---
 
-- name: Validate features.cni is pick-one
+- name: Validate cni.name is pick-one
   ansible.builtin.assert:
     that:
-      - config_render_merged.features.cni in ['cilium', 'none']
+      - config_render_merged.cni.name in ['cilium', 'none']
     fail_msg: >-
-      features.cni must be one of: cilium, none.
-      Got '{{ config_render_merged.features.cni | default('') }}'.
+      cni.name must be one of: cilium, none.
+      Got '{{ config_render_merged.cni.name | default('') }}'.
       An invalid value silently disables Cilium wiring (CNI proxy patch,
       bootstrap_pre_flux_components) so typos fail fast here instead.
     quiet: true
@@ -107,6 +120,34 @@
     quiet: true
   when: config_render_merged.features.ingress not in ['none', '']
 
+# --- Stale transitional key rejection (config schema migration, June 2026) ---
+# features.cni and features.hcloudCcm have graduated to their own top-level keys
+# (cni.name and cloud_controller_manager.enabled). Reject stale keys in overrides
+# with a clear migration error rather than silently ignoring them.
+
+- name: Reject stale transitional features.cni in overrides
+  ansible.builtin.assert:
+    that:
+      - "'cni' not in (config_render_overrides.features | default({}))"
+    fail_msg: >-
+      features.cni is a stale transitional key (config schema migration, June 2026).
+      It has graduated to the top-level cni.name key. Move this value from
+      features.cni to cni.name in config/overrides/cluster.yaml.
+      Example: cni:\n  name: cilium
+    quiet: true
+
+- name: Reject stale transitional features.hcloudCcm in overrides
+  ansible.builtin.assert:
+    that:
+      - "'hcloudCcm' not in (config_render_overrides.features | default({}))"
+    fail_msg: >-
+      features.hcloudCcm is a stale transitional key (config schema migration,
+      June 2026). It has graduated to the top-level cloud_controller_manager.enabled
+      key. Move this value from features.hcloudCcm to
+      cloud_controller_manager.enabled in config/overrides/cluster.yaml.
+      Example: cloud_controller_manager:\n  enabled: true
+    quiet: true
+
 # --- Computed-key rejection (ADR-011) ---
 # The following flat Ansible vars are computed by the renderer (compute.yml)
 # from nested schema fields. Setting them directly in overrides has no effect
@@ -124,15 +165,16 @@
       talos.extensions.extra instead.
     quiet: true
 
-# bootstrap_pre_flux_components is computed from features.cni + provider.name
-# (ADR-010). It is rendered into the provider group_vars, not read from input.
+  # bootstrap_pre_flux_components is computed from cni.name + cloud_controller_manager.enabled
+  # + provider.name (ADR-010). It is rendered into the provider group_vars, not read from input.
 - name: Reject direct override of computed bootstrap_pre_flux_components
   ansible.builtin.assert:
     that:
       - "'bootstrap_pre_flux_components' not in (config_render_overrides | default({}))"
     fail_msg: >-
       bootstrap_pre_flux_components is a computed key, derived from
-      features.cni and provider.name. Do not set it directly in overrides.
+      cni.name, cloud_controller_manager.enabled, and provider.name.
+      Do not set it directly in overrides.
     quiet: true
 
 # cluster_endpoint is computed from cluster.vip (or cluster.endpoint if

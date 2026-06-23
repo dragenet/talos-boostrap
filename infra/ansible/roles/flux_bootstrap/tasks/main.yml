@@ -1,2 +1,30 @@
 ---
-# Tasks: flux bootstrap git --url={{ flux_repo_url }} --branch={{ flux_repo_branch }} --path={{ flux_path }}
+# Tasks: pre-Flux component installation (Cilium CNI, optional hcloud CCM)
+# followed by Flux git bootstrap.
+#
+# Dependency order:
+#   1. Preflight — assert tools, required vars, and kubeconfig exist
+#   2. Namespaces — ensure target namespaces exist before Helm installs
+#   3. Cilium — CNI must be installed first so pods can schedule
+#   4. hcloud CCM — clears the uninitialized node taint (requires Cilium)
+#   5. Flux — bootstrap only after all pre-Flux components are Ready
+#
+# Each component step is gated on its presence in bootstrap_pre_flux_components
+# (computed by the config_render role from cni.name + ccm flags + provider).
+
+- name: Pre-flight checks (tools, required variables, kubeconfig)
+  ansible.builtin.include_tasks: preflight.yml
+
+- name: Ensure target namespaces exist
+  ansible.builtin.include_tasks: namespaces.yml
+
+- name: Install Cilium CNI (pre-Flux)
+  ansible.builtin.include_tasks: cilium.yml
+  when: "'cilium' in flux_bootstrap_components"
+
+- name: Install hcloud Cloud Controller Manager (pre-Flux)
+  ansible.builtin.include_tasks: hcloud_ccm.yml
+  when: "'hcloud-ccm' in flux_bootstrap_components"
+
+- name: Bootstrap Flux from git repository
+  ansible.builtin.include_tasks: flux.yml

@@ -12,7 +12,7 @@
 #     90-user-raw.yaml.j2    — raw fragments from talos.patches.all (if any)
 #   generated/controlplane/  — applied to control-plane only (--config-patch-control-plane)
 #     00-network.yaml.j2     — VIP on private interface
-#     10-cni-proxy.yaml.j2   — CNI disabled + kube-proxy disabled (if features.cni=cilium)
+#     10-cni-proxy.yaml.j2   — CNI disabled + kube-proxy disabled (if cni.name=cilium)
 #     90-user-raw.yaml.j2    — raw fragments from talos.patches.controlplane (if any)
 #   generated/nodes/         — per-node patches from nodes.yaml (if any)
 #
@@ -88,13 +88,13 @@
     src: talos_patches/controlplane/10-cni-proxy.yaml.j2
     dest: "{{ config_render_talos_patches_out }}/controlplane/10-cni-proxy.yaml.j2"
     mode: "0644"
-  when: config_render_merged.features.cni == 'cilium'
+  when: config_render_merged.cni.name == 'cilium'
 
 - name: Remove stale CNI/proxy patch when CNI is not cilium
   ansible.builtin.file:
     path: "{{ config_render_talos_patches_out }}/controlplane/10-cni-proxy.yaml.j2"
     state: absent
-  when: config_render_merged.features.cni != 'cilium'
+  when: config_render_merged.cni.name != 'cilium'
 
 - name: Render control-plane user-raw patch (90-user-raw.yaml.j2)
   ansible.builtin.template:

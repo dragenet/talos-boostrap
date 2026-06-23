@@ -1,7 +1,7 @@
 {{ config_render_header }}
 ---
 # Manual provider bootstrap configuration.
-# Computed from features + provider (ADR-010).
+# Computed from cni.name + cloud_controller_manager.enabled + provider (ADR-010).
 #
 # This file is generated ONLY when provider.name: manual in
 # config/overrides/cluster.yaml. The hcloud provider carries the same
@@ -18,7 +18,7 @@ bootstrap_pre_flux_components:
 {% endfor %}
 {% else %}
 # Explicit empty list — stays a list (not YAML null) so bootstrap-flux.yml can
-# iterate without a NoneType guard. Occurs when features.cni: none and no
+# iterate without a NoneType guard. Occurs when cni.name: none and no
 # provider-specific pre-Flux components apply.
 bootstrap_pre_flux_components: []
 {% endif %}

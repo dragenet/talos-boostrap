@@ -75,24 +75,45 @@ talos:
     all: []
     controlplane: []
 
+# CNI plugin: cilium | none. "none" leaves in-cluster CNI management enabled
+# (Talos default); "cilium" disables it for pre-Flux Cilium install.
+# Graduated from features.cni (config schema migration, June 2026).
+cni:
+  name: cilium
+
+# Cloud Controller Manager tri-state (ADR-005):
+#   auto  — resolve per provider: enable for providers with a supported CCM
+#           (hcloud only today); disable for manual/bare-metal. This is the
+#           template default — a new cluster on a supported cloud gets CCM
+#           automatically without the operator having to know the provider key.
+#   true  — force-enable; validation fails if the selected provider has no
+#           supported CCM (e.g. manual with true → hard error).
+#   false — disable the external cloud provider; no CCM is installed and the
+#           Talos externalCloudProvider patch is not emitted.
+#
+# When resolved true and cni.name=cilium, the render emits hcloud-ccm into
+# bootstrap_pre_flux_components and generates the Talos all-node patch setting
+# cluster.externalCloudProvider=true so kubelet and kube-controller-manager run
+# with --cloud-provider=external (the CCM clears the uninitialized taint and sets
+# providerID/topology labels).
+#
+# ⚠️  The CCM pre-Flux INSTALLER (flux_bootstrap role `hcloud-ccm` step) is
+# deferred to a later feature slice (plan 2026-06-22-cilium-ccm-csi). Enabling CCM
+# before the installer lands would taint nodes with no CCM to clear them — the
+# kube1 overrides explicitly set enabled: false (overriding the template auto
+# default) until that slice ships.
+# Graduated from features.hcloudCcm (config schema migration, June 2026).
+cloud_controller_manager:
+  enabled: auto
+
+# Optional cluster features. These toggle add-on controllers and services
+# deployed by Flux after bootstrap. CNI and CCM have been graduated to their own
+# top-level keys (cni.name, cloud_controller_manager.enabled).
 features:
-  # CNI plugin: cilium | none. "none" leaves in-cluster CNI management enabled
-  # ( Talos default); "cilium" disables it for pre-Flux Cilium install.
-  cni: cilium
   certManager: false
   # Ingress controller: none | envoy-gateway | traefik. Pick-one (ADR-012).
   ingress: none
   openebs: false
-  # Hetzner Cloud Controller Manager (CCM). When true the render emits
-  # `hcloud-ccm` into bootstrap_pre_flux_components and a Talos all-node patch
-  # setting cluster.externalCloudProvider.enabled so kubelet/kube-controller-manager
-  # run with --cloud-provider=external (the CCM clears the uninitialized taint
-  # and sets providerID/topology labels). DEFAULTS TO FALSE: the CCM installer
-  # (flux_bootstrap pre-Flux `hcloud-ccm` step) is feature work in a later slice
-  # (plan 2026-06-22-cilium-ccm-csi). Enabling this flag before the installer
-  # lands would taint nodes with no CCM to clear them — leave it false until
-  # that slice ships. Requires provider.name: hcloud and features.cni: cilium.
-  hcloudCcm: false
   hcloudCsi: false
 
 # Storage volume definitions (ADR-013). User-owned list — replaces defaults.

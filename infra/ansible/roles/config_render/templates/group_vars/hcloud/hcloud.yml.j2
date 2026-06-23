@@ -77,7 +77,8 @@ hcloud_servers_ip_offset: {{ config_render_merged.hcloud.serversIpOffset }}
 # ─── Bootstrap pre-Flux components ────────────────────────────────────────────
 #
 # Provider-keyed list of components installed by bootstrap-flux.yml before
-# Flux reconciliation starts (ADR-010). Computed from features + provider.
+# Flux reconciliation starts (ADR-010). Computed from cni.name +
+# cloud_controller_manager.enabled + provider name.
 {% if config_render_bootstrap_pre_flux_components | length > 0 %}
 bootstrap_pre_flux_components:
 {% for component in config_render_bootstrap_pre_flux_components %}
@@ -85,6 +86,6 @@ bootstrap_pre_flux_components:
 {% endfor %}
 {% else %}
 # Explicit empty list — stays a list (not YAML null) so bootstrap-flux.yml can
-# iterate without a NoneType guard. Occurs when features.cni: none.
+# iterate without a NoneType guard. Occurs when cni.name: none.
 bootstrap_pre_flux_components: []
 {% endif %}

@@ -31,7 +31,7 @@
 - name: Render Talos patches (ADR-013 layered model)
   ansible.builtin.include_tasks: render_talos.yml
 
-- name: Render Flux base (stub — step 6)
+- name: Render Flux base kustomization from component selection
   ansible.builtin.include_tasks: render_flux.yml
 
 - name: Check/drift detection

@@ -1,0 +1,33 @@
+---
+# Ensure target namespaces exist before Helm installs.
+#
+# Pre-Flux components use dedicated <component>-system namespaces per the
+# settled convention (ADR-002, ADR-005, ADR-010):
+#   - Cilium:    cilium-system
+#   - hcloud CCM: hcloud-ccm-system
+# The Flux _components/ catalog creates/owns these namespaces under Flux,
+# but Ansible must ensure they exist first in the pre-Flux install phase.
+# kubernetes.core.k8s with apply=true is idempotent — a second run is a
+# clean no-op.
+
+- name: Ensure cilium-system namespace exists for Cilium
+  kubernetes.core.k8s:
+    kubeconfig: "{{ flux_bootstrap_kubeconfig }}"
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: cilium-system
+  when: "'cilium' in flux_bootstrap_components"
+
+- name: Ensure hcloud-ccm-system namespace exists for hcloud CCM
+  kubernetes.core.k8s:
+    kubeconfig: "{{ flux_bootstrap_kubeconfig }}"
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: hcloud-ccm-system
+  when: "'hcloud-ccm' in flux_bootstrap_components"

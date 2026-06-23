@@ -1,0 +1,9 @@
+---
+# Namespace for Cilium CNI — dedicated per the bootstrap component namespace
+# convention (ADR-002, ADR-005). Ansible creates this namespace pre-Flux and
+# installs the Cilium Helm release here. Flux then owns the Namespace for
+# steady-state reconciliation.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cilium-system

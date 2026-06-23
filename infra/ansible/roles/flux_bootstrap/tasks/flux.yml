@@ -1,0 +1,100 @@
+---
+# Bootstrap FluxCD from the configured git repository.
+#
+# Runs flux bootstrap git which:
+#   1. Creates the flux-system namespace and installs Flux controllers
+#   2. Generates an SSH deploy key (or uses an existing one)
+#   3. Pushes the public key to the git repository as a deploy key
+#   4. Commits the Flux Sync manifests (kustomization.yaml, gotk-components.yaml)
+#      to the repository at flux_path on flux_repo_branch
+#
+# flux_repo_url, flux_repo_branch, and flux_path come from the generated
+# flux.yml group_vars (source: config/overrides/cluster.yaml flux: section).
+# flux_repo_url must be non-empty — preflight asserts this.
+
+- name: Run cluster connectivity check before Flux bootstrap
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ flux_bootstrap_kubeconfig }}"
+      - get
+      - nodes
+  register: flux_bootstrap_pre_bootstrap_nodes
+  changed_when: false
+
+- name: Show node status before Flux bootstrap
+  ansible.builtin.debug:
+    msg: >-
+      Flux bootstrap starting.
+      Nodes reporting: {{ flux_bootstrap_pre_bootstrap_nodes.stdout_lines | length }} nodes.
+      Components installed before Flux: {{ flux_bootstrap_components }}.
+
+# Idempotency gate: check whether Flux is already bootstrapped before running
+# the bootstrap command. The helm-controller Deployment in flux-system exists
+# only after a successful `flux bootstrap git`. If it's already present we
+# skip the entire bootstrap command — the deploy key is already pushed to the
+# repo and controllers are already installed.
+#
+# Without this gate, Ansible would report "changed" on every run because
+# `flux bootstrap git` prints "all components are healthy" on both first-run
+# and re-run — there is no reliable "I did nothing" signal in its output.
+# `--ignore-not-found` ensures the kubectl command succeeds (returns empty
+# output) when flux-system or helm-controller don't exist yet.
+#
+# Limitation: if a partial bootstrap occurred (e.g. controllers installed but
+# deploy key NOT pushed to the repo), this gate would skip, preventing recovery.
+# In that case, delete the flux-system namespace and re-run.
+- name: Check if Flux is already bootstrapped
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ flux_bootstrap_kubeconfig }}"
+      - get
+      - deployment
+      - helm-controller
+      - --namespace
+      - flux-system
+      - --ignore-not-found
+      - -o
+      - name
+  register: flux_bootstrap_existing
+  changed_when: false
+  failed_when: false
+
+- name: Bootstrap Flux from git repository
+  ansible.builtin.command:
+    argv:
+      - flux
+      - bootstrap
+      - git
+      - --url={{ flux_repo_url }}
+      - --branch={{ flux_repo_branch }}
+      - --path={{ flux_path }}
+      - --kubeconfig={{ flux_bootstrap_kubeconfig }}
+      - --timeout={{ flux_bootstrap_flux_timeout }}
+      # --components-extra adds additional Flux components beyond the defaults
+      # (source-controller, kustomize-controller, helm-controller, notification-controller).
+      # Image automation controllers are not needed yet.
+  register: flux_bootstrap_result
+  # Run only when Flux is not already present in the cluster — the pre-check
+  # above gates this via when: on kubectl output being empty.
+  when: flux_bootstrap_existing.stdout | trim | length == 0
+  changed_when: flux_bootstrap_result.rc == 0
+
+- name: Verify Flux controllers are running post-bootstrap
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ flux_bootstrap_kubeconfig }}"
+      - rollout
+      - status
+      - deployment
+      - --namespace
+      - flux-system
+      - --timeout
+      - 5m
+  register: flux_bootstrap_controllers_ready
+  changed_when: false

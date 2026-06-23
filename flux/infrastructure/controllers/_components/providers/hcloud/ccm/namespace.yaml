@@ -1,0 +1,10 @@
+---
+# Namespace for hcloud Cloud Controller Manager — dedicated per the
+# bootstrap component namespace convention (ADR-005: <provider>-ccm-system).
+# Ansible creates this namespace pre-Flux along with the Secret hcloud/token
+# and installs the CCM Helm release here. Flux then owns the Namespace for
+# steady-state reconciliation.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hcloud-ccm-system

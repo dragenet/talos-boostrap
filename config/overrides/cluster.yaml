@@ -77,8 +77,22 @@ talos:
     all: []
     controlplane: []
 
+# CNI plugin — graduated from features.cni (config schema migration, June 2026).
+cni:
+  name: cilium
+
+# Cloud Controller Manager — explicitly set to auto (matching the template
+# default) so the hcloud provider resolves to enabled per ADR-005. When resolved
+# true (hcloud + cilium), the render emits hcloud-ccm into
+# bootstrap_pre_flux_components and generates the Talos all-node patch for
+# cluster.externalCloudProvider. Manual clusters resolve auto to disabled.
+#
+# Flip to false to disable the CCM entirely; flip to true to force-enable
+# (validation fails if the provider has no supported CCM or cni != cilium).
+cloud_controller_manager:
+  enabled: auto
+
 features:
-  cni: cilium
   certManager: false
   ingress: none
   openebs: false

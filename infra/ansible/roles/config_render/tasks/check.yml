@@ -85,6 +85,20 @@
   changed_when: false
   check_mode: false
 
+# --- Flux base kustomization drift detection ---
+
+- name: Diff Flux controllers base kustomization
+  ansible.builtin.command:
+    argv:
+      - diff
+      - "-u"
+      - "{{ config_render_repo_root }}/flux/infrastructure/controllers/base/kustomization.yaml"
+      - "{{ config_render_temp_dir }}/flux/infrastructure/controllers/base/kustomization.yaml"
+  register: config_render_diff_flux_base
+  failed_when: false
+  changed_when: false
+  check_mode: false
+
 # --- Classify diff results by exit code ---
 # diff exit codes: 0 = identical, 1 = differences found (drift),
 # >1 = trouble (missing file, I/O error). The previous logic checked stdout
@@ -104,7 +118,8 @@
         (config_render_diff_flux.rc | default(0) == 1) or
         (config_render_diff_hcloud.rc | default(0) == 1) or
         (config_render_diff_manual.rc | default(0) == 1) or
-        (config_render_diff_talos_patches.rc | default(0) == 1)
+        (config_render_diff_talos_patches.rc | default(0) == 1) or
+        (config_render_diff_flux_base.rc | default(0) == 1)
       }}
     config_render_has_diff_error: >-
       {{
@@ -113,7 +128,8 @@
         (config_render_diff_flux.rc | default(0) > 1) or
         (config_render_diff_hcloud.rc | default(0) > 1) or
         (config_render_diff_manual.rc | default(0) > 1) or
-        (config_render_diff_talos_patches.rc | default(0) > 1)
+        (config_render_diff_talos_patches.rc | default(0) > 1) or
+        (config_render_diff_flux_base.rc | default(0) > 1)
       }}
   changed_when: false
 
@@ -152,6 +168,10 @@
       {% if config_render_diff_talos_patches.stderr | default('') | length > 0 %}
       --- Talos generated patches stderr (rc={{ config_render_diff_talos_patches.rc | default('?') }}) ---
       {{ config_render_diff_talos_patches.stderr }}
+      {% endif %}
+      {% if config_render_diff_flux_base.stderr | default('') | length > 0 %}
+      --- Flux base kustomization stderr (rc={{ config_render_diff_flux_base.rc | default('?') }}) ---
+      {{ config_render_diff_flux_base.stderr }}
       {% endif %}
   when: config_render_has_diff_error | bool
 
@@ -195,6 +215,11 @@
       --- Talos generated patches drift ---
       {{ config_render_diff_talos_patches.stdout }}
       {{ config_render_diff_talos_patches.stderr | default('') }}
+      {% endif %}
+      {% if config_render_diff_flux_base.rc | default(0) == 1 %}
+      --- Flux base kustomization drift ---
+      {{ config_render_diff_flux_base.stdout }}
+      {{ config_render_diff_flux_base.stderr | default('') }}
       {% endif %}
   when: config_render_has_drift | bool and not (config_render_has_diff_error | bool)
 

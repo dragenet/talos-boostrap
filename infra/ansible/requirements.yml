@@ -10,3 +10,9 @@ collections:
   # ansible-core >=2.15 (we run 2.21).
   - name: community.sops
     version: "2.3.0"
+  # Kubernetes modules: k8s (namespace/secret management), helm (Helm release
+  # install/upgrade with idempotent change detection). Used by the flux_bootstrap
+  # role for pre-Flux component installation (Cilium CNI, hcloud CCM).
+  # Requires: pip install kubernetes (Python client).
+  - name: kubernetes.core
+    version: "6.4.0"

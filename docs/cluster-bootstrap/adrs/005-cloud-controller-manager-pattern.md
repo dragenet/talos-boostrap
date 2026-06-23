@@ -1,42 +1,48 @@
-# ADR-005: Cloud controller manager — enabled for cloud providers, disabled for metal
+# ADR-005: Cloud controller manager — tri-state enablement and provider resolution
 
-**Status:** Superseded by ADR-010
-
-> **Supersession note:** ADR-010 refactors the bootstrap architecture so that the provider CCM is still installed pre-Flux by Ansible (to clear the `uninitialized` taint in time for Flux), but is then **adopted by Flux** and reconciled from git as steady state. The "CCM runs outside Flux, not reconciled" consequence below no longer applies to kube1's refactored architecture; see ADR-010 §What goes where for the current ownership table. The provider-type distinction (cloud installs CCM, metal does not) still holds.
+**Status:** Accepted
 
 ## Context
 
-When kubelet starts with `--cloud-provider=external`, Kubernetes taints every node with `node.cloudprovider.kubernetes.io/uninitialized:NoSchedule`. Only a CCM can clear this taint, and until it does no workloads schedule — including Flux's own controllers. CCM must therefore run **before** `flux bootstrap`, installed directly by Ansible.
+When kubelet and kube-controller-manager run with `--cloud-provider=external`, Kubernetes taints every node with `node.cloudprovider.kubernetes.io/uninitialized:NoSchedule`. Only a CCM can clear this taint, and until it does no workloads schedule — including Flux's own controllers. CCM must therefore run **before** `flux bootstrap`, installed directly by Ansible, and then be adopted by Flux as steady state.
 
-The bootstrap template supports two provider types:
-
-- **Cloud providers** (e.g. `hcloud`) — have a CCM that integrates Kubernetes with the cloud API: node lifecycle (removes the Node object when the VM is deleted), `providerID`, node addresses, zone/region topology labels. Require `--cloud-provider=external` on kubelet.
-- **Metal provider** (`manual`) — no cloud API, no CCM. `--cloud-provider=external` is not set; the uninitialized taint is never applied.
+The bootstrap template supports both cloud providers (e.g. `hcloud`) and a metal/null provider (`manual`). CCM availability is provider-specific, but the enablement decision must be expressed in a provider-agnostic way.
 
 ## Decision
 
-Provider type determines CCM behaviour at bootstrap:
+`cloud_controller_manager.enabled` is a core cluster config key (not a `features` entry) with three values:
 
-| Provider | `--cloud-provider=external` | CCM installed | Pre-Flux step |
-|---|---|---|---|
-| `hcloud` | ✅ | ✅ hcloud CCM | Cilium → hcloud CCM → flux bootstrap |
-| `manual` (metal) | ❌ | ❌ | Cilium → flux bootstrap |
+| Value | Behaviour |
+|---|---|
+| `auto` (default) | Render resolves the provider. If a known CCM exists for `provider.name`, enable it; otherwise disable it. |
+| `true` | Enable the external cloud provider and install the provider's CCM. Render / validation fails if the provider has no supported CCM. |
+| `false` | Disable the external cloud provider; no CCM is installed. |
 
-The pre-Flux component list is driven by a provider `group_vars` variable (e.g. `bootstrap_pre_flux_components`). Ansible's `bootstrap-flux.yml` iterates it; metal omits CCM entirely.
+Rules:
+
+- `cloud_controller_manager.enabled` is provider-agnostic; provider-specific CCM selection is handled by the render's `provider.name` mapping.
+- If CCM is enabled, it is installed pre-Flux by Ansible and then adopted by Flux (ADR-010), using the namespace `<provider>-ccm-system` (e.g. `hcloud-ccm-system`) and matching Helm release name and values.
+- If CCM is disabled or the provider has no supported CCM, `externalCloudProvider.enabled` must remain `false` so kubelet / kube-controller-manager do not run with `--cloud-provider=external`.
+- `features` is reserved for optional platform / app features (OpenEBS, Envoy Gateway, Traefik, external-dns, etc.) and must not be used for CCM enablement.
 
 ### hcloud CCM configuration (reference implementation)
 
-Deployed via Helm with `networking.enabled: false`. Active roles:
+When `provider.name: hcloud` and CCM is enabled, deploy the hcloud CCM via Helm with `networking.enabled: false`. Active roles:
 
 - **Kubernetes cloud controller** — node lifecycle, `providerID = hcloud://<id>`, `InternalIP` from private network, `topology.kubernetes.io/zone` / `region` labels, clears uninitialized taint.
 - **CSI prerequisite** — Hetzner CSI requires `providerID` on each node to attach Cloud Volumes.
 
 Disabled roles:
-- **Route controller** (`networking.enabled: false`) — not needed; CNI uses VXLAN.
-- **LB controller** — not needed; ingress uses host-network Envoy Gateway (see ADR-004).
+
+- **Route controller** (`networking.enabled: false`) — not needed; CNI uses VXLAN (ADR-002).
+- **Load-balancer controller** — not needed; ingress uses host-network Envoy Gateway (ADR-004).
 
 ## Consequences
 
-- CCM runs as a plain Helm release, outside Flux. It is not reconciled by Flux and must be upgraded via playbook or manually.
-- Adding a new cloud provider to the bootstrap template requires defining its CCM chart/values in the provider `group_vars` and adding it to `bootstrap_pre_flux_components`.
+- CCM is reconciled by Flux after bootstrap; it is not a one-off Ansible install.
+- Adding a new cloud provider to the bootstrap template requires registering its CCM in the render's auto-resolution table and adding its catalog base under `flux/infrastructure/controllers/_components/providers/<name>/`.
+- The pre-Flux Ansible component list is rendered from `cni.name` and `cloud_controller_manager.enabled`; `manual` disables CCM automatically.
 - Components that cannot tolerate the uninitialized taint must not be placed in the Ansible pre-Flux layer — they belong in Flux, where the taint is already cleared.
+- Enabling the external cloud provider without a supported CCM leaves nodes permanently tainted; `true` therefore requires validation.
+
+> **Implementation status (2026-06-23):** Implemented. The `cloud_controller_manager.enabled` tri-state schema migration is complete (`features.hcloudCcm` is no longer used). The `flux_bootstrap` role installs the hcloud CCM pre-Flux when the tri-state resolves to enabled, the matching `HelmRelease` under `flux/infrastructure/controllers/_components/providers/hcloud/ccm/` adopts it, and the render emits the `cluster.externalCloudProvider` Talos patch.

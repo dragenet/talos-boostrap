@@ -1,0 +1,20 @@
+---
+# _components/cilium/ — Cilium CNI catalog entry.
+#
+# Owner: Template maintainers. Edit only when updating the Cilium adoption
+# contract; cluster-specific overrides go through ../base/ (render-compiler)
+# or ../../patches/ (user-owned patches).
+#
+# Installs Cilium into the dedicated cilium-system namespace (ADR-002).
+# The Ansible pre-Flux bootstrap installs Cilium first (pod networking
+# must exist before Flux controllers can schedule), and Flux adopts the
+# existing release on first reconciliation using the same release name,
+# namespace, chart, and values.
+#
+# Deployment order: Namespace → HelmRepository → HelmRelease.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - helmrepository.yaml
+  - helmrelease.yaml

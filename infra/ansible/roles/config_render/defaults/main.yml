@@ -25,6 +25,11 @@ config_render_output_manual: "{{ config_render_repo_root }}/infra/ansible/invent
 # optional per-node directories.
 config_render_output_talos_patches: "{{ config_render_repo_root }}/infra/talos/patches/generated"
 
+# Generated Flux base output path (render-owned, ADR-010 catalog/base/overlay).
+# The base kustomization.yaml is render-owned: the render compiler populates it
+# with enabled catalog entries from _components/ based on cluster.yaml.
+config_render_output_flux_base: "{{ config_render_repo_root }}/flux/infrastructure/controllers/base"
+
 # Check/drift mode: when true, render to a temp directory and diff against
 # committed generated files instead of writing in-place.
 config_render_check: false

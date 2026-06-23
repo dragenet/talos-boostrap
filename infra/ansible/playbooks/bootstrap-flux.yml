@@ -1,6 +1,33 @@
 ---
-# Installs Cilium (pre-Flux CNI) and bootstraps Flux from the git repository.
-# Requires a healthy cluster (run bootstrap-talos.yml first).
+# Installs pre-Flux cluster components (Cilium CNI, optional hcloud CCM) and
+# bootstraps FluxCD from the git repository.
+#
+# Requires a healthy cluster with Talos + etcd bootstrapped (run
+# bootstrap-talos.yml first). The kubeconfig at infra/talos/secrets/kubeconfig
+# must exist.
+#
+# What this playbook does:
+#   Pre-flight:  Checks kubectl, helm, flux are available; asserts flux_repo_url
+#                is set; asserts hcloud_token is set when CCM is needed.
+#   Namespaces:  Ensures cilium-system and hcloud-ccm-system exist per active
+#                pre-Flux components (idempotent).
+#   Cilium:      Installs/upgrades the Cilium Helm release with Talos-compatible
+#                values (KubePrism endpoint, cgroup mounts, capabilities, BPF
+#                legacy routing, VXLAN tunnel). Flux adopts the release because
+#                the release name, namespace, and chart match the Flux HelmRelease.
+#   hcloud CCM:  (only when hcloud-ccm is in bootstrap_pre_flux_components)
+#                Creates the hcloud token Secret from the SOPS-encrypted hcloud_token,
+#                then installs/upgrades the hcloud-cloud-controller-manager Helm
+#                release with networking.enabled=false. The CCM clears the
+#                cloud-provider uninitialized taint so Flux controllers can schedule.
+#   Flux:        Runs flux bootstrap git with the configured repo URL, branch,
+#                and path. Pushes a deploy key to the repo and installs Flux
+#                controllers in the flux-system namespace.
+#
+# Components installed are determined by bootstrap_pre_flux_components, computed
+# by the config_render role from cni.name + cloud_controller_manager.enabled +
+# provider name (ADR-010). No components are installed before Flux if the list
+# is empty.
 #
 # Usage:
 #   ansible-playbook -i inventories/common -i inventories/providers/hcloud playbooks/bootstrap-flux.yml

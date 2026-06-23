@@ -1,0 +1,52 @@
+---
+# hcloud Cloud Controller Manager HelmRelease for Flux adoption.
+#
+# Pre-Flux Ansible installs CCM into hcloud-ccm-system with matching
+# releaseName / namespace / chart / values. Flux detects the existing
+# release and adopts it.
+#
+# Depends on Cilium being Ready — CCM needs pod networking to talk to the
+# K8s API, and Talos with external cloud provider enabled taints nodes
+# with node.cloudprovider.kubernetes.io/uninitialized:NoSchedule. CCM
+# clears this taint and sets providerID/topology labels.
+#
+# Namespace: hcloud-ccm-system per ADR-005 dedicated-namespace convention
+# (pattern: <provider>-ccm-system).
+#
+# Token is NOT configured here — the chart default reads from Secret
+# "hcloud" key "token" (env.HCLOUD_TOKEN.valueFrom.secretKeyRef) in the
+# release namespace. Ansible creates hcloud-ccm-system/hcloud pre-Flux
+# from the SOPS-encrypted hcloud_token; Flux does not own a plaintext
+# Secret manifest.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: hcloud-cloud-controller-manager
+  namespace: hcloud-ccm-system
+spec:
+  interval: 1h
+  releaseName: hcloud-cloud-controller-manager
+  targetNamespace: hcloud-ccm-system
+  install:
+    createNamespace: true  # hcloud-ccm-system created by Ansible pre-Flux; Flux owns it
+  dependsOn:
+    # Cilium in cilium-system must be Ready before CCM can clear the
+    # uninitialized taint. Cross-namespace reference requires explicit
+    # namespace since CCM lives in hcloud-ccm-system.
+    - name: cilium
+      namespace: cilium-system
+  chart:
+    spec:
+      chart: hcloud-cloud-controller-manager
+      version: 1.33.0  # pin: >=v1.30.1; v1.33.0 is latest as of 2026-06-23
+      sourceRef:
+        kind: HelmRepository
+        name: hcloud
+        namespace: hcloud-ccm-system
+  values:
+    # ----- Networking (ADR-005) -----
+    # Route controller is not needed — Cilium uses VXLAN tunnel.
+    # Load-balancer controller is also unused (ingress is host-network
+    # Envoy Gateway per ADR-004).
+    networking:
+      enabled: false

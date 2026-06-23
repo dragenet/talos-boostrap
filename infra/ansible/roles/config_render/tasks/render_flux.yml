@@ -1,10 +1,47 @@
 ---
-# Render Flux base kustomization and cluster-vars ConfigMap.
+# Render Flux base kustomization from the merged cluster.yaml features and
+# provider selection (ADR-010, ADR-012).
 #
-# STUB — deferred to step 6 of the refactor plan.
-# When implemented, this will generate flux/infrastructure/controllers/base/
-# from the merged cluster.yaml features + provider selection.
+# Maps component names in config_render_bootstrap_pre_flux_components (computed
+# by compute.yml) to catalog paths under _components/. The base kustomization is
+# the render-owned half of the catalog / base / overlay split; the top-level
+# kustomization.yaml in ../ is user-owned and references base/ as a resource.
+#
+# Catalog path contract:
+#   cilium     → ../_components/cilium
+#   hcloud-ccm → ../_components/providers/hcloud/ccm
+#
+# For the empty set (cni.name=none and CCM disabled), resources: [] is emitted
+# explicitly rather than YAML null so Kustomize and callers can iterate without
+# a NoneType guard.
 
-- name: Flux base render (stub)
-  ansible.builtin.debug:
-    msg: "Flux base rendering is deferred to step 6 of the refactor plan."
+# --- Map component names to catalog paths ---
+
+- name: Compute Flux base resource paths
+  ansible.builtin.set_fact:
+    config_render_flux_base_resources: >-
+      {{
+        (['../_components/cilium'] if 'cilium' in config_render_bootstrap_pre_flux_components else [])
+        + (['../_components/providers/hcloud/ccm'] if 'hcloud-ccm' in config_render_bootstrap_pre_flux_components else [])
+      }}
+
+# --- Determine output directory (in-place or temp for check mode) ---
+# config_render_output_base is set by render_ansible.yml (runs before this).
+
+- name: Set Flux controllers base output directory
+  ansible.builtin.set_fact:
+    config_render_flux_base_dir: "{{ config_render_output_base }}/flux/infrastructure/controllers/base"
+
+# --- Render base kustomization ---
+
+- name: Ensure Flux controllers base directory exists
+  ansible.builtin.file:
+    path: "{{ config_render_flux_base_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Render Flux controllers base kustomization
+  ansible.builtin.template:
+    src: flux/base/kustomization.yaml.j2
+    dest: "{{ config_render_flux_base_dir }}/kustomization.yaml"
+    mode: "0644"

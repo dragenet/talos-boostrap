@@ -1,0 +1,15 @@
+---
+# HelmRepository for the Cilium Helm chart repo.
+# Cilium charts are distributed via traditional Helm repo at helm.cilium.io.
+# OCI is also available (oci://quay.io/cilium/charts/cilium) but the
+# traditional repo is simpler for Flux HelmRelease sourceRef.
+#
+# Lives in cilium-system alongside the HelmRelease it serves.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: cilium
+  namespace: cilium-system
+spec:
+  interval: 1h
+  url: https://helm.cilium.io

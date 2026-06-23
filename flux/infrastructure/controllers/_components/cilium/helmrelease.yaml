@@ -1,0 +1,139 @@
+---
+# Cilium HelmRelease for Flux adoption.
+#
+# Pre-Flux Ansible installs Cilium into cilium-system with matching
+# releaseName / namespace / chart / values. Flux detects the existing
+# release and adopts it on first reconciliation (install.disableTakeOwnership
+# is left at its default false).
+#
+# Values match ADR-002 (VXLAN tunnel, kube-proxy replacement, no L7 proxy,
+# no Gateway API). The API server is reached via Talos KubePrism at
+# localhost:7445 — this avoids the chicken-and-egg problem where Cilium
+# cannot reach the API via ClusterIP because kube-proxy is disabled.
+#
+# Cilium is the root of the controller dependency chain: no dependsOn.
+#
+# Namespace: cilium-system per ADR-002 dedicated-namespace convention.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cilium
+  namespace: cilium-system
+spec:
+  interval: 1h
+  releaseName: cilium
+  targetNamespace: cilium-system
+  install:
+    # cilium-system is created by Ansible pre-Flux; Flux owns it thereafter.
+    createNamespace: true
+  chart:
+    spec:
+      chart: cilium
+      version: 1.19.5  # pin: do not float; latest 1.19.x as of 2026-06-23
+      sourceRef:
+        kind: HelmRepository
+        name: cilium
+        namespace: cilium-system
+  values:
+    # ----- kube-proxy replacement (ADR-002) -----
+    # Talos already sets proxy.disabled: true in the machine config patch.
+    # kubeProxyReplacement: true runs Cilium in standalone mode.
+    kubeProxyReplacement: true
+
+    # ----- Routing & IPAM (ADR-002, Talos-required) -----
+    # Hetzner private network is L3-routed; native routing requires the
+    # hcloud CCM route controller which we don't run (networking.enabled:
+    # false per ADR-005). Cilium tunnel with default VXLAN protocol works
+    # on any fabric and avoids the Hetzner-injected-gateway problem.
+    routingMode: tunnel
+
+    # Talos assigns PodCIDRs to Node resources. Cilium must use
+    # ipam.mode=kubernetes to read the PodCIDR from each node's spec
+    # rather than managing its own CIDR pool (the default cluster-pool).
+    # Required per the Talos tab in docs.cilium.io.
+    ipam:
+      mode: kubernetes
+
+    # ----- L7 / Gateway API (ADR-002) -----
+    # Disabled by design: VXLAN context, no L7 NetworkPolicy or
+    # HTTP-aware rules, no Gateway API controller from Cilium.
+    l7Proxy: false
+    gatewayAPI:
+      enabled: false
+
+    # ----- API server reachability (Talos KubePrism) -----
+    # Without kube-proxy, Cilium's init container cannot reach the K8s API
+    # via the default ClusterIP. Talos KubePrism runs on every node as a
+    # host-network sidecar at localhost:7445 — always reachable, avoids
+    # the chicken-and-egg bootstrap problem. This is the recommended
+    # approach for Talos per docs.cilium.io.
+    k8sServiceHost: localhost
+    k8sServicePort: "7445"
+
+    # ----- Talos HostDNS compatibility -----
+    # Talos 1.8+ enables HostDNS by default, which forwards DNS from the
+    # host to CoreDNS via the Cilium host endpoint. Without legacy host
+    # routing, this traffic may be dropped by Cilium's eBPF datapath.
+    # Required per the Talos Cilium install guide.
+    bpf:
+      hostLegacyRouting: true
+
+    # ----- Talos cgroupv2 compatibility -----
+    # Talos already mounts cgroupv2 + bpffs at /sys/fs/cgroup.
+    # Cilium must not try to auto-mount cgroups (the chart default),
+    # and must use the host root path. Required per docs.cilium.io.
+    cgroup:
+      autoMount:
+        enabled: false
+      hostRoot: /sys/fs/cgroup
+
+    # ----- Talos capability restrictions -----
+    # Talos drops SYS_MODULE (kernel module loading) from workload
+    # capabilities. Cilium's agent DaemonSet and cleanCiliumState init
+    # container each need explicit capability lists without SYS_MODULE.
+    # Without this, Cilium agent pods fail to create on Talos.
+    securityContext:
+      capabilities:
+        ciliumAgent:
+          - CHOWN
+          - KILL
+          - NET_ADMIN
+          - NET_RAW
+          - IPC_LOCK
+          - SYS_ADMIN
+          - SYS_RESOURCE
+          - DAC_OVERRIDE
+          - FOWNER
+          - SETGID
+          - SETUID
+        cleanCiliumState:
+          - NET_ADMIN
+          - SYS_ADMIN
+          - SYS_RESOURCE
+
+    # ----- Operator tolerations for external cloud provider -----
+    # With external cloud provider enabled, nodes are tainted
+    # node.cloudprovider.kubernetes.io/uninitialized:NoSchedule until CCM
+    # clears it. The Cilium agent DaemonSet already tolerates all taints
+    # (operator: Exists), but the operator does NOT tolerate this taint
+    # by default (Cilium issue #41921). Without it, the operator can't
+    # schedule during pre-Flux bootstrap (CCM hasn't cleared the taint
+    # yet) and the CNI/CCM bootstrap chain deadlocks.
+    operator:
+      tolerations:
+        # Chart defaults that we must re-state because operator.tolerations
+        # replaces rather than merges.
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+        - key: "node-role.kubernetes.io/master"
+          operator: "Exists"
+        - key: "node.kubernetes.io/not-ready"
+          operator: "Exists"
+        - key: "node.cilium.io/agent-not-ready"
+          operator: "Exists"
+        # Additional toleration for external cloud provider mode.
+        # CCM clears this taint after it runs; this toleration ensures
+        # the Cilium operator can schedule before that happens.
+        - key: "node.cloudprovider.kubernetes.io/uninitialized"
+          operator: "Exists"
+          effect: "NoSchedule"

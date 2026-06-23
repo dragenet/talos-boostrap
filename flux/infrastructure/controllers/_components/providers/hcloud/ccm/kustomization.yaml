@@ -1,0 +1,30 @@
+---
+# _components/providers/hcloud/ccm/ — hcloud Cloud Controller Manager.
+#
+# Owner: Template maintainers. Edit only when updating the CCM adoption
+# contract; provider-specific overrides go through the render-compiler or
+# ../../../../patches/ (failsafe: user-owned patches).
+#
+# Installs the hcloud CCM into the dedicated hcloud-ccm-system namespace
+# (ADR-005 pattern: <provider>-ccm-system). Ansible pre-Flux bootstrap
+# installs CCM after Cilium (the uninitialized taint must be cleared
+# before Flux controllers schedule), and Flux adopts the existing release
+# using the same release name, namespace, and values.
+#
+# Token Secret contract:
+#   The chart reads HCLOUD_TOKEN from Secret "hcloud" key "token" in the
+#   release namespace (hcloud-ccm-system) by default. Ansible creates this
+#   Secret pre-Flux from the SOPS-encrypted hcloud_token. Flux does NOT
+#   manage this Secret — the HelmRelease references it only through chart
+#   defaults, so no plaintext token ever reaches Git.
+#
+# Networking is disabled: Cilium uses VXLAN (ADR-002), so the route
+# controller is not needed (ADR-005).
+#
+# Deployment order: Namespace → HelmRepository → HelmRelease.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - helmrepository.yaml
+  - helmrelease.yaml

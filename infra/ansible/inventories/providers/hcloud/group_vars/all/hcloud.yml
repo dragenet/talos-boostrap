@@ -77,6 +77,8 @@ hcloud_servers_ip_offset: 11
 # ─── Bootstrap pre-Flux components ────────────────────────────────────────────
 #
 # Provider-keyed list of components installed by bootstrap-flux.yml before
-# Flux reconciliation starts (ADR-010). Computed from features + provider.
+# Flux reconciliation starts (ADR-010). Computed from cni.name +
+# cloud_controller_manager.enabled + provider name.
 bootstrap_pre_flux_components:
   - cilium
+  - hcloud-ccm

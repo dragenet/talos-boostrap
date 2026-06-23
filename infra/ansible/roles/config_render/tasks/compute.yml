@@ -22,49 +22,67 @@
          + (config_render_merged.talos.extensions.extra | default([])) }}
 
 # --- bootstrap_pre_flux_components ---
-# Computed from features + provider (ADR-010).
-# cilium  → included when features.cni == 'cilium' (the pre-Flux CNI install).
-# hcloud-ccm → included ONLY when features.hcloudCcm is true AND provider is
-#              hcloud AND cni=cilium. The CCM clears the uninitialized node
-#              taint and sets providerID/topology labels.
-# manual: [cilium] when cni=cilium, [] when cni=none.
-# hcloud: [cilium] when cni=cilium; hcloud-ccm appended only when explicitly
-#         enabled via features.hcloudCcm (default false — the CCM installer is
-#         deferred to a later feature slice, plan 2026-06-22-cilium-ccm-csi;
-#         enabling it without the installer would taint nodes with no CCM to
-#         clear them).
-# Empty list when cni=none and no provider-specific pre-Flux components.
+# Computed from cni.name + cloud_controller_manager.enabled + provider (ADR-010).
+# cilium  → included when cni.name == 'cilium' (the pre-Flux CNI install).
+# hcloud-ccm → included ONLY when the CCM tri-state resolves to enabled AND
+#              provider is hcloud AND cni.name=cilium. The CCM clears the
+#              uninitialized node taint and sets providerID/topology labels.
+# manual: [cilium] when cni.name=cilium, [] when cni.name=none.
+# hcloud: [cilium] when cni.name=cilium; hcloud-ccm appended when CCM resolves
+#         enabled (auto→true for hcloud, or explicit true).
+# Empty list when cni.name=none and CCM resolves disabled.
+
+- name: Resolve cloud_controller_manager tri-state (auto → boolean)
+  ansible.builtin.set_fact:
+    config_render_ccm_resolved: >-
+      {{
+        true
+        if config_render_merged.cloud_controller_manager.enabled == true
+        or config_render_merged.cloud_controller_manager.enabled == 'auto'
+        else false
+      }}
+  # auto resolves to true only for providers with a supported CCM.
+  # hcloud is the only provider with CCM support today; manual/bare-metal
+  # falls through to false (no CCM to clear the uninitialized taint).
+  when: >-
+    config_render_merged.cloud_controller_manager.enabled != 'auto'
+    or config_render_merged.provider.name == 'hcloud'
+
+- name: Resolve cloud_controller_manager tri-state (auto → disabled for unsupported provider)
+  ansible.builtin.set_fact:
+    config_render_ccm_resolved: false
+  when: >-
+    config_render_merged.cloud_controller_manager.enabled == 'auto'
+    and config_render_merged.provider.name != 'hcloud'
 
 - name: Compute bootstrap_pre_flux_components
   ansible.builtin.set_fact:
     config_render_bootstrap_pre_flux_components: >-
       {{
-        (['cilium'] if config_render_merged.features.cni == 'cilium' else [])
+        (['cilium'] if config_render_merged.cni.name == 'cilium' else [])
         + (['hcloud-ccm']
-           if (config_render_merged.features.hcloudCcm | default(false) | bool
+           if (config_render_ccm_resolved | default(false) | bool
                and config_render_merged.provider.name == 'hcloud'
-               and config_render_merged.features.cni == 'cilium')
+               and config_render_merged.cni.name == 'cilium')
            else [])
       }}
 
 # --- cluster_external_cloud_provider_enabled ---
-# Computed: true iff hcloud CCM is in the pre-Flux component set, i.e. the
-# day-one cloud-integration stack includes the hcloud Cloud Controller Manager
-# (features.hcloudCcm and provider.name == 'hcloud' and features.cni == 'cilium'
-# today). When true the render emits a Talos all-node patch setting
+# Computed: true iff the CCM tri-state resolved to enabled AND provider has a
+# supported CCM AND the provider-specific CCM component is in the pre-Flux set.
+# When true the render emits a Talos all-node patch setting
 # cluster.externalCloudProvider so kubelet and kube-controller-manager run with
 # --cloud-provider=external and the CCM can initialise nodes (set providerID,
 # clear the node.cloudprovider.kubernetes.io/uninitialized taint, attach
 # topology labels).
 #
-# Derived from the pre-Flux list rather than provider.name alone so the flag
-# tracks the actual CCM selection: if hcloud-ccm is ever removed from the
-# pre-Flux set (e.g. features.hcloudCcm flips back to false), externalCloudProvider
-# is disabled too, avoiding the "uninitialized taint with no CCM to clear it"
-# failure mode. Manual/bare-metal providers never set this — there is no CCM to
-# clear the taint, so enabling it would permanently taint nodes and block
-# scheduling. Defaults to false: the CCM installer is feature work deferred to a
-# later slice, so the refactor is purely behavior-preserving.
+# Derived from the pre-Flux list rather than the raw config value alone so the
+# flag tracks the actual CCM selection: if hcloud-ccm is ever removed from the
+# pre-Flux set (e.g. CCM flips back to false, or auto resolves to disabled),
+# externalCloudProvider is disabled too, avoiding the "uninitialized taint with
+# no CCM to clear it" failure mode. Manual/bare-metal providers never set this —
+# there is no CCM to clear the taint, so enabling it would permanently taint
+# nodes and block scheduling.
 
 - name: Compute cluster_external_cloud_provider_enabled
   ansible.builtin.set_fact:
