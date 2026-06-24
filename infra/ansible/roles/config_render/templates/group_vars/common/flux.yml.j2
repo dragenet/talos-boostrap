@@ -2,7 +2,35 @@
 ---
 # Flux bootstrap configuration.
 # Source: config/overrides/cluster.yaml (flux: section)
+#
+# Rendered non-secret auth fields only — flux_auth_token and
+# flux_auth_private_key_passphrase are SOPS-backed and loaded from
+# encrypted inventory group vars (e.g. inventories/common/group_vars/all/flux.sops.yaml).
 
 flux_repo_url: '{{ config_render_merged.flux.repoUrl | default('') }}'
 flux_repo_branch: {{ config_render_merged.flux.repoBranch }}
 flux_path: {{ config_render_merged.flux.path }}
+
+# --- Flux bootstrap auth ---
+flux_provider: {{ config_render_merged.flux.provider }}
+flux_auth_mode: {{ config_render_merged.flux.auth.mode }}
+flux_auth_username: {{ config_render_merged.flux.auth.username }}
+flux_auth_owner: '{{ config_render_merged.flux.auth.owner | default('') }}'
+flux_auth_repository: '{{ config_render_merged.flux.auth.repository | default('') }}'
+flux_auth_hostname: '{{ config_render_merged.flux.auth.hostname | default('') }}'
+flux_auth_personal: {{ config_render_merged.flux.auth.personal | lower }}
+flux_auth_private: {{ config_render_merged.flux.auth.private | lower }}
+flux_auth_read_write_key: {{ config_render_merged.flux.auth.readWriteKey | lower }}
+flux_auth_token_auth_bearer: {{ config_render_merged.flux.auth.tokenAuthBearer | lower }}
+flux_auth_ssh_hostname: '{{ config_render_merged.flux.auth.sshHostname | default('') }}'
+flux_auth_private_key_file: '{{ config_render_merged.flux.auth.privateKeyFile | default('') }}'
+flux_auth_ca_file: '{{ config_render_merged.flux.auth.caFile | default('') }}'
+flux_auth_allow_insecure_http: {{ config_render_merged.flux.auth.allowInsecureHttp | lower }}
+flux_auth_silent: {{ config_render_merged.flux.auth.silent | lower }}
+
+# NOTE: flux_auth_token and flux_auth_private_key_passphrase are NOT rendered
+# from config/ — they must come from SOPS-encrypted inventory group vars.
+# Create e.g. inventories/common/group_vars/all/flux.sops.yaml with:
+#
+#   flux_auth_token: "<GITHUB_TOKEN or HTTPS token/password>"
+#   flux_auth_private_key_passphrase: "<optional SSH key passphrase>"

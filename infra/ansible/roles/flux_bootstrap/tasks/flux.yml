@@ -1,16 +1,23 @@
 ---
 # Bootstrap FluxCD from the configured git repository.
 #
-# Runs flux bootstrap git which:
-#   1. Creates the flux-system namespace and installs Flux controllers
-#   2. Generates an SSH deploy key (or uses an existing one)
-#   3. Pushes the public key to the git repository as a deploy key
-#   4. Commits the Flux Sync manifests (kustomization.yaml, gotk-components.yaml)
-#      to the repository at flux_path on flux_repo_branch
+# Supports three authentication modes dispatched by flux_provider and
+# flux_auth_mode:
+#   provider-deploy-key → GitHub / Bitbucket Server PAT-created deploy key
+#   https-token         → HTTPS basic/bearer token auth
+#   ssh-private-key     → Existing SSH key pair (generic git only)
 #
-# flux_repo_url, flux_repo_branch, and flux_path come from the generated
-# flux.yml group_vars (source: config/overrides/cluster.yaml flux: section).
-# flux_repo_url must be non-empty — preflight asserts this.
+# Provider-specific bootstraps (github, bitbucket-server) use the provider
+# API to create deploy keys / access keys and configure the repository.
+# Generic git (flux bootstrap git) only manages the cluster-side Flux
+# installation — the operator must pre-configure repository auth.
+#
+# Idempotency: when the flux-system/helm-controller Deployment already exists,
+# all bootstrap commands are skipped. This means a re-run is a clean no-op.
+# Limitation: changing auth mode after initial bootstrap requires manual
+# rotation (delete flux-system namespace, update config, re-run).
+
+# ── Cluster connectivity ──────────────────────────────────────────────────────
 
 - name: Run cluster connectivity check before Flux bootstrap
   ansible.builtin.command:
@@ -27,24 +34,28 @@
   ansible.builtin.debug:
     msg: >-
       Flux bootstrap starting.
+      Provider: {{ flux_provider }} | Auth mode: {{ flux_auth_mode }}.
       Nodes reporting: {{ flux_bootstrap_pre_bootstrap_nodes.stdout_lines | length }} nodes.
       Components installed before Flux: {{ flux_bootstrap_components }}.
 
-# Idempotency gate: check whether Flux is already bootstrapped before running
-# the bootstrap command. The helm-controller Deployment in flux-system exists
-# only after a successful `flux bootstrap git`. If it's already present we
-# skip the entire bootstrap command — the deploy key is already pushed to the
-# repo and controllers are already installed.
+# ── Idempotency gate ──────────────────────────────────────────────────────────
+# Check whether Flux controllers are already installed. The helm-controller
+# Deployment in flux-system exists only after a successful `flux bootstrap`.
+# If present, we skip all bootstrap commands — the deploy key is already
+# pushed to the repo and controllers are already installed.
 #
 # Without this gate, Ansible would report "changed" on every run because
-# `flux bootstrap git` prints "all components are healthy" on both first-run
+# `flux bootstrap` prints "all components are healthy" on both first-run
 # and re-run — there is no reliable "I did nothing" signal in its output.
-# `--ignore-not-found` ensures the kubectl command succeeds (returns empty
+# --ignore-not-found ensures the kubectl command succeeds (returns empty
 # output) when flux-system or helm-controller don't exist yet.
 #
 # Limitation: if a partial bootstrap occurred (e.g. controllers installed but
 # deploy key NOT pushed to the repo), this gate would skip, preventing recovery.
 # In that case, delete the flux-system namespace and re-run.
+# This gate also masks auth-mode changes — switching from SSH to HTTPS after
+# bootstrap requires manual rotation.
+
 - name: Check if Flux is already bootstrapped
   ansible.builtin.command:
     argv:
@@ -63,25 +74,94 @@
   changed_when: false
   failed_when: false
 
-- name: Bootstrap Flux from git repository
-  ansible.builtin.command:
-    argv:
-      - flux
-      - bootstrap
-      - git
-      - --url={{ flux_repo_url }}
-      - --branch={{ flux_repo_branch }}
-      - --path={{ flux_path }}
-      - --kubeconfig={{ flux_bootstrap_kubeconfig }}
-      - --timeout={{ flux_bootstrap_flux_timeout }}
-      # --components-extra adds additional Flux components beyond the defaults
-      # (source-controller, kustomize-controller, helm-controller, notification-controller).
-      # Image automation controllers are not needed yet.
-  register: flux_bootstrap_result
-  # Run only when Flux is not already present in the cluster — the pre-check
-  # above gates this via when: on kubectl output being empty.
-  when: flux_bootstrap_existing.stdout | trim | length == 0
-  changed_when: flux_bootstrap_result.rc == 0
+# ── Unsupportable combination ─────────────────────────────────────────────────
+# generic + provider-deploy-key has no provider API to create deploy keys.
+# Fail fast before any mutating operations so the operator gets a clear
+# message instead of a confusing flux CLI error later.
+# Skipped (no-op) when Flux is already bootstrapped — config changes post-
+# bootstrap are harmless because the idempotency gate skips all commands.
+
+- name: Fail fast — generic provider cannot create deploy keys
+  ansible.builtin.fail:
+    msg: >-
+      provider-deploy-key mode is not supported with the generic provider.
+      Generic Git has no API to create deploy keys. Switch to ssh-private-key
+      mode and manually provision a deploy key, or choose a supported provider
+      (github, bitbucket-server).
+  when:
+    - flux_auth_mode == 'provider-deploy-key'
+    - flux_provider == 'generic'
+    - flux_bootstrap_existing.stdout | trim | length == 0
+
+# ── Provider-deploy-key mode ──────────────────────────────────────────────────
+
+- name: Bootstrap Flux via GitHub deploy key (provider-deploy-key)
+  ansible.builtin.include_tasks: flux_github.yml
+  vars:
+    _flux_token_auth: false
+  when:
+    - flux_auth_mode == 'provider-deploy-key'
+    - flux_provider == 'github'
+    - flux_bootstrap_existing.stdout | trim | length == 0
+
+- name: Bootstrap Flux via Bitbucket Server deploy key (provider-deploy-key)
+  ansible.builtin.include_tasks: flux_bitbucket_server.yml
+  vars:
+    _flux_token_auth: false
+  when:
+    - flux_auth_mode == 'provider-deploy-key'
+    - flux_provider == 'bitbucket-server'
+    - flux_bootstrap_existing.stdout | trim | length == 0
+
+# ── https-token mode ──────────────────────────────────────────────────────────
+# When provider-specific fields (owner, repository) are fully set, use the
+# provider-specific bootstrap with --token-auth=true for richer repo management.
+# Otherwise fall back to generic flux bootstrap git against the HTTPS URL.
+
+- name: Bootstrap Flux via GitHub HTTPS token
+  ansible.builtin.include_tasks: flux_github.yml
+  vars:
+    _flux_token_auth: true
+  when:
+    - flux_auth_mode == 'https-token'
+    - flux_provider == 'github'
+    - flux_auth_owner | length > 0
+    - flux_auth_repository | length > 0
+    - flux_bootstrap_existing.stdout | trim | length == 0
+
+- name: Bootstrap Flux via Bitbucket Server HTTPS token
+  ansible.builtin.include_tasks: flux_bitbucket_server.yml
+  vars:
+    _flux_token_auth: true
+  when:
+    - flux_auth_mode == 'https-token'
+    - flux_provider == 'bitbucket-server'
+    - flux_auth_owner | length > 0
+    - flux_auth_repository | length > 0
+    - flux_bootstrap_existing.stdout | trim | length == 0
+
+# Catch-all for https-token: generic provider, or github/bitbucket-server with
+# missing owner/repository (falls back to generic git to avoid cryptic CLI errors).
+- name: Bootstrap Flux via generic git HTTPS token
+  ansible.builtin.include_tasks: flux_git.yml
+  vars:
+    _flux_mode: https-token
+  when:
+    - flux_auth_mode == 'https-token'
+    - flux_provider == 'generic' or flux_auth_owner | length == 0 or flux_auth_repository | length == 0
+    - flux_bootstrap_existing.stdout | trim | length == 0
+
+# ── ssh-private-key mode ─────────────────────────────────────────────────────
+
+- name: Bootstrap Flux via generic git with SSH private key
+  ansible.builtin.include_tasks: flux_git.yml
+  vars:
+    _flux_mode: ssh-private-key
+  when:
+    - flux_auth_mode == 'ssh-private-key'
+    - flux_bootstrap_existing.stdout | trim | length == 0
+
+# ── Post-bootstrap verification ───────────────────────────────────────────────
 
 - name: Verify Flux controllers are running post-bootstrap
   ansible.builtin.command:

@@ -148,10 +148,38 @@ flux_bootstrap_hcloud_ccm_values:
     enabled: false
 
 # --- Flux bootstrap ---
-# These are sourced from the generated flux.yml group_vars:
-#   flux_repo_url    → Git repository URL
-#   flux_repo_branch → Git branch (default: master)
-#   flux_path        → Path to the Flux cluster directory (e.g. ./flux/clusters/kube1)
-# flux_repo_url must be non-empty — preflight asserts this.
+# Non-secret auth variables are sourced from the generated flux.yml group_vars
+# (rendered from config/overrides/cluster.yaml flux: section by render-config):
+#   flux_repo_url                   → Git repository URL (required for generic git)
+#   flux_repo_branch                → Git branch (default: master)
+#   flux_path                       → Cluster directory path (e.g. ./flux/clusters/kube1)
+#   flux_provider                   → generic | github | bitbucket-server
+#   flux_auth_mode                  → provider-deploy-key | https-token | ssh-private-key
+#   flux_auth_username              → HTTPS basic / Bitbucket API username
+#   flux_auth_owner                 → GitHub org/user or Bitbucket project
+#   flux_auth_repository            → Repository slug/name
+#   flux_auth_hostname              → GitHub Enterprise / Bitbucket Server hostname
+#   flux_auth_personal              → --personal flag for provider bootstrap
+#   flux_auth_private               → --private flag (default true)
+#   flux_auth_read_write_key        → Read-write deploy key (default false)
+#   flux_auth_token_auth_bearer     → Bearer token instead of basic auth
+#   flux_auth_ssh_hostname          → Non-standard SSH host[:port] for Git
+#   flux_auth_private_key_file      → Local SSH private key path (ssh-private-key mode)
+#   flux_auth_ca_file               → Custom CA certificate for HTTPS
+#   flux_auth_allow_insecure_http   → Allow HTTP connections (development only)
+#   flux_auth_silent                → Skip deploy-key confirmation prompt
+#
+# Secrets (SOPS-backed, NOT rendered from config/):
+#   flux_auth_token                  → GITHUB_TOKEN, BITBUCKET_TOKEN, or HTTPS token/password
+#   flux_auth_private_key_passphrase → Optional passphrase for encrypted SSH keys
+#
+# flux_repo_url must be non-empty for generic git flows. For provider-specific
+# flows (github, bitbucket-server), the URL is constructed from owner + repository
+# and flux_repo_url is advisory / display only.
 
 flux_bootstrap_flux_timeout: 10m
+
+# flux_auth_private_key_passphrase — optional SSH key passphrase, loaded from
+# SOPS-backed inventory group vars (NOT a role default). The role references
+# this variable with | default('') so it safely evaluates to empty when the
+# SOPS file hasn't been created yet. Do not set it here.

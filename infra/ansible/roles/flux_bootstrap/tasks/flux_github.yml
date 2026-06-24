@@ -1,0 +1,49 @@
+---
+# Run flux bootstrap github — creates a deploy key via GitHub API (PAT)
+# and installs Flux controllers in the cluster.
+#
+# Token-auth behavior (controlled by _flux_token_auth var set by caller):
+#   _flux_token_auth=false → PAT creates deploy key; PAT NOT stored in cluster.
+#     The GitHub API token is used only at bootstrap time to create/register
+#     the deploy key. Only SSH key material lands in the Flux source secret.
+#     (provider-deploy-key mode)
+#   _flux_token_auth=true  → PAT stored in cluster as HTTPS source secret.
+#     Flux authenticates to the repo via HTTPS with the stored token.
+#     (https-token mode)
+#
+# The GITHUB_TOKEN environment variable carries the PAT from flux_auth_token
+# (SOPS-backed). no_log: true prevents the token from appearing in output.
+#
+# Optional TLS/SSH knobs:
+#   --hostname     → GitHub Enterprise hostname (defaults to github.com if unset)
+#   --ssh-hostname → Non-standard SSH host[:port] for Git operations
+#   --ca-file      → Custom CA certificate for HTTPS connections
+
+- name: Build flux bootstrap github command arguments
+  ansible.builtin.set_fact:
+    _flux_bootstrap_argv: >-
+      {{
+        ['flux', 'bootstrap', 'github']
+        + ['--owner=' + flux_auth_owner]
+        + ['--repository=' + flux_auth_repository]
+        + ['--token-auth=' + (_flux_token_auth | bool | ternary('true', 'false'))]
+        + (['--hostname=' + flux_auth_hostname] if flux_auth_hostname | length > 0 else [])
+        + (['--ssh-hostname=' + flux_auth_ssh_hostname] if flux_auth_ssh_hostname | length > 0 else [])
+        + (['--ca-file=' + flux_auth_ca_file] if flux_auth_ca_file | length > 0 else [])
+        + (['--personal'] if flux_auth_personal | bool else [])
+        + (['--private=false'] if not (flux_auth_private | bool) else [])
+        + (['--read-write-key'] if flux_auth_read_write_key | bool else [])
+        + ['--branch=' + flux_repo_branch]
+        + ['--path=' + flux_path]
+        + ['--kubeconfig=' + flux_bootstrap_kubeconfig]
+        + ['--timeout=' + flux_bootstrap_flux_timeout]
+      }}
+
+- name: Bootstrap Flux on GitHub
+  ansible.builtin.command:
+    argv: "{{ _flux_bootstrap_argv }}"
+  environment:
+    GITHUB_TOKEN: "{{ flux_auth_token }}"
+  register: flux_bootstrap_result
+  changed_when: flux_bootstrap_result.rc == 0
+  no_log: true  # GITHUB_TOKEN is a secret — must not appear in output

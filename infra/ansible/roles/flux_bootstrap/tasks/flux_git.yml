@@ -1,0 +1,73 @@
+---
+# Run flux bootstrap git — the generic Git bootstrap that manages only
+# the cluster-side Flux installation. No provider API operations.
+#
+# Supports two modes (selected by caller via _flux_mode var):
+#   https-token      → HTTPS URL with --username + --password (token)
+#                      and --token-auth=true (creates HTTPS source objects).
+#   ssh-private-key  → SSH URL with --private-key-file + optional
+#                      --password (passphrase); no --token-auth (default
+#                      false creates SSH source objects).
+#
+# no_log: true on tasks that pass tokens or SSH key passphrases via
+# command args so secrets never appear in Ansible output.
+
+# ── https-token mode ──────────────────────────────────────────────────────────
+
+- name: Build flux bootstrap git arguments for https-token mode
+  ansible.builtin.set_fact:
+    _flux_bootstrap_git_argv: >-
+      {{
+        ['flux', 'bootstrap', 'git']
+        + ['--url=' + flux_repo_url]
+        + ['--token-auth=true']
+        + ['--username=' + flux_auth_username]
+        + ['--password=' + flux_auth_token]
+        + (['--with-bearer-token'] if flux_auth_token_auth_bearer | bool else [])
+        + (['--ca-file=' + flux_auth_ca_file] if flux_auth_ca_file | length > 0 else [])
+        + (['--allow-insecure-http'] if flux_auth_allow_insecure_http | bool else [])
+        + (['--silent'] if flux_auth_silent | bool else [])
+        + ['--branch=' + flux_repo_branch]
+        + ['--path=' + flux_path]
+        + ['--kubeconfig=' + flux_bootstrap_kubeconfig]
+        + ['--timeout=' + flux_bootstrap_flux_timeout]
+      }}
+  when: _flux_mode == 'https-token'
+  no_log: true  # flux_auth_token is resolved into --password — must not leak
+
+- name: Bootstrap Flux via generic git (HTTPS token)
+  ansible.builtin.command:
+    argv: "{{ _flux_bootstrap_git_argv }}"
+  register: flux_bootstrap_result
+  changed_when: flux_bootstrap_result.rc == 0
+  when: _flux_mode == 'https-token'
+  no_log: true  # --password contains the secret token
+
+# ── ssh-private-key mode ─────────────────────────────────────────────────────
+
+- name: Build flux bootstrap git arguments for ssh-private-key mode
+  ansible.builtin.set_fact:
+    _flux_bootstrap_git_argv: >-
+      {{
+        ['flux', 'bootstrap', 'git']
+        + ['--url=' + flux_repo_url]
+        + ['--private-key-file=' + flux_auth_private_key_file]
+        + (['--password=' + flux_auth_private_key_passphrase] if flux_auth_private_key_passphrase | default('') | length > 0 else [])
+        + (['--ssh-hostname=' + flux_auth_ssh_hostname] if flux_auth_ssh_hostname | length > 0 else [])
+        + (['--ca-file=' + flux_auth_ca_file] if flux_auth_ca_file | length > 0 else [])
+        + (['--silent'] if flux_auth_silent | bool else [])
+        + ['--branch=' + flux_repo_branch]
+        + ['--path=' + flux_path]
+        + ['--kubeconfig=' + flux_bootstrap_kubeconfig]
+        + ['--timeout=' + flux_bootstrap_flux_timeout]
+      }}
+  when: _flux_mode == 'ssh-private-key'
+  no_log: "{{ flux_auth_private_key_passphrase | default('') | length > 0 }}"
+
+- name: Bootstrap Flux via generic git (SSH private key)
+  ansible.builtin.command:
+    argv: "{{ _flux_bootstrap_git_argv }}"
+  register: flux_bootstrap_result
+  changed_when: flux_bootstrap_result.rc == 0
+  when: _flux_mode == 'ssh-private-key'
+  no_log: "{{ flux_auth_private_key_passphrase | default('') | length > 0 }}"

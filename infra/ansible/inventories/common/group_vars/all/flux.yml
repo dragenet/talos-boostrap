@@ -2,7 +2,35 @@
 ---
 # Flux bootstrap configuration.
 # Source: config/overrides/cluster.yaml (flux: section)
+#
+# Rendered non-secret auth fields only — flux_auth_token and
+# flux_auth_private_key_passphrase are SOPS-backed and loaded from
+# encrypted inventory group vars (e.g. inventories/common/group_vars/all/flux.sops.yaml).
 
 flux_repo_url: ''
 flux_repo_branch: master
 flux_path: ./flux/clusters/kube1
+
+# --- Flux bootstrap auth ---
+flux_provider: generic
+flux_auth_mode: ssh-private-key
+flux_auth_username: git
+flux_auth_owner: ''
+flux_auth_repository: ''
+flux_auth_hostname: ''
+flux_auth_personal: false
+flux_auth_private: true
+flux_auth_read_write_key: false
+flux_auth_token_auth_bearer: false
+flux_auth_ssh_hostname: ''
+flux_auth_private_key_file: ''
+flux_auth_ca_file: ''
+flux_auth_allow_insecure_http: false
+flux_auth_silent: false
+
+# NOTE: flux_auth_token and flux_auth_private_key_passphrase are NOT rendered
+# from config/ — they must come from SOPS-encrypted inventory group vars.
+# Create e.g. inventories/common/group_vars/all/flux.sops.yaml with:
+#
+#   flux_auth_token: "<GITHUB_TOKEN or HTTPS token/password>"
+#   flux_auth_private_key_passphrase: "<optional SSH key passphrase>"

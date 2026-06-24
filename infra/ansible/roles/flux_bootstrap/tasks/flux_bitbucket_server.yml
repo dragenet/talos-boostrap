@@ -1,0 +1,59 @@
+---
+# Run flux bootstrap bitbucket-server — creates an access key via
+# Bitbucket Server/Data Center API (PAT) and installs Flux controllers.
+#
+# Token-auth behavior (controlled by _flux_token_auth var set by caller):
+#   _flux_token_auth=false → PAT creates access key; PAT NOT stored in cluster.
+#     The Bitbucket API token is used only at bootstrap time to create the
+#     access key. Only SSH key material lands in the Flux source secret.
+#     (provider-deploy-key mode)
+#   _flux_token_auth=true  → PAT stored in cluster as HTTPS source secret.
+#     Flux authenticates to the repo via HTTPS with the stored token.
+#     (https-token mode)
+#
+# Bitbucket Server/DC often uses non-standard SSH port 7999. When
+# flux_auth_ssh_hostname is set, --ssh-hostname is added to the command
+# so Flux knows the correct SSH host:port for Git operations.
+#
+# The BITBUCKET_TOKEN environment variable carries the PAT from
+# flux_auth_token (SOPS-backed). no_log: true prevents the token from
+# appearing in output.
+#
+# NOTE: --hostname (the Bitbucket Server address) is REQUIRED by
+# flux bootstrap bitbucket-server — there is no default host (unlike
+# github which defaults to github.com). It is always passed; callers
+# should ensure flux_auth_hostname is non-empty via preflight validation
+# before reaching this task.
+#
+# Optional TLS knob:
+#   --ca-file → Custom CA certificate for self-signed HTTPS connections
+
+- name: Build flux bootstrap bitbucket-server command arguments
+  ansible.builtin.set_fact:
+    _flux_bootstrap_argv: >-
+      {{
+        ['flux', 'bootstrap', 'bitbucket-server']
+        + ['--owner=' + flux_auth_owner]
+        + ['--username=' + flux_auth_username]
+        + ['--repository=' + flux_auth_repository]
+        + ['--hostname=' + flux_auth_hostname]
+        + ['--token-auth=' + (_flux_token_auth | bool | ternary('true', 'false'))]
+        + (['--ssh-hostname=' + flux_auth_ssh_hostname] if flux_auth_ssh_hostname | length > 0 else [])
+        + (['--ca-file=' + flux_auth_ca_file] if flux_auth_ca_file | length > 0 else [])
+        + (['--personal'] if flux_auth_personal | bool else [])
+        + (['--private=false'] if not (flux_auth_private | bool) else [])
+        + (['--read-write-key'] if flux_auth_read_write_key | bool else [])
+        + ['--branch=' + flux_repo_branch]
+        + ['--path=' + flux_path]
+        + ['--kubeconfig=' + flux_bootstrap_kubeconfig]
+        + ['--timeout=' + flux_bootstrap_flux_timeout]
+      }}
+
+- name: Bootstrap Flux on Bitbucket Server
+  ansible.builtin.command:
+    argv: "{{ _flux_bootstrap_argv }}"
+  environment:
+    BITBUCKET_TOKEN: "{{ flux_auth_token }}"
+  register: flux_bootstrap_result
+  changed_when: flux_bootstrap_result.rc == 0
+  no_log: true  # BITBUCKET_TOKEN is a secret — must not appear in output

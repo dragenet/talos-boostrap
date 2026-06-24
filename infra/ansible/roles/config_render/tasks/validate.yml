@@ -273,3 +273,168 @@
     fail_msg: "hcloud.serverTypes must be a non-empty list when provider.name: hcloud"
     quiet: true
   when: config_render_merged.provider.name == 'hcloud'
+
+# --- Flux bootstrap auth validation ---
+
+- name: Validate flux.provider is pick-one
+  ansible.builtin.assert:
+    that:
+      - config_render_merged.flux.provider in ['generic', 'github', 'bitbucket-server']
+    fail_msg: >-
+      flux.provider must be one of: generic, github, bitbucket-server.
+      Got '{{ config_render_merged.flux.provider | default('') }}'.
+    quiet: true
+
+- name: Validate flux.auth.mode is pick-one
+  ansible.builtin.assert:
+    that:
+      - config_render_merged.flux.auth.mode in ['provider-deploy-key', 'https-token', 'ssh-private-key']
+    fail_msg: >-
+      flux.auth.mode must be one of: provider-deploy-key, https-token, ssh-private-key.
+      Got '{{ config_render_merged.flux.auth.mode | default('') }}'.
+    quiet: true
+
+# --- Mode / provider mutual exclusion ---
+# provider-deploy-key only works with github or bitbucket-server — generic Git
+# has no provider API to create deploy keys. The user must switch to
+# ssh-private-key or https-token for generic Git repos, or switch the provider
+# to github/bitbucket-server to use deploy key creation.
+
+- name: Reject generic + provider-deploy-key (no provider API for deploy keys)
+  ansible.builtin.assert:
+    that:
+      - false
+    fail_msg: >-
+      flux.provider: generic does not support flux.auth.mode: provider-deploy-key
+      because generic Git hosts have no provider API to create deploy/access keys.
+      Use flux.auth.mode: ssh-private-key (with an existing deploy key) or
+      flux.auth.mode: https-token for generic Git repos. If you intended to use
+      provider-deploy-key, set flux.provider: github or flux.provider: bitbucket-server.
+    quiet: true
+  when:
+    - config_render_merged.flux.provider == 'generic'
+    - config_render_merged.flux.auth.mode == 'provider-deploy-key'
+
+# --- Provider-specific required fields ---
+# provider-deploy-key mode uses provider-specific bootstrap commands (flux
+# bootstrap github / bitbucket-server). These need owner + repository to
+# construct the repo URL; bitbucket-server also needs hostname.
+#
+# https-token mode does NOT require owner/repository at render time. When
+# owner/repository are absent or the provider is generic, the command builder
+# (flux.yml) falls back to flux bootstrap git, which uses repoUrl instead
+# — validated separately by the URL format checks below.
+#
+# ssh-private-key mode uses flux bootstrap git which takes repoUrl directly
+# and does not need owner/repository at all.
+
+- name: Validate github provider-deploy-key requires owner + repository
+  ansible.builtin.assert:
+    that:
+      - config_render_merged.flux.auth.owner | default('') | string | length > 0
+      - config_render_merged.flux.auth.repository | default('') | string | length > 0
+    fail_msg: >-
+      flux.provider: github with flux.auth.mode: provider-deploy-key
+      requires flux.auth.owner and flux.auth.repository to be non-empty.
+      These fields are used to construct the target repository for
+      flux bootstrap github. (https-token mode does not require these
+      fields — it falls back to flux bootstrap git when absent.)
+    quiet: true
+  when:
+    - config_render_merged.flux.provider == 'github'
+    - config_render_merged.flux.auth.mode == 'provider-deploy-key'
+
+- name: Validate bitbucket-server provider-deploy-key / https-token requires owner + repository + hostname
+  ansible.builtin.assert:
+    that:
+      - config_render_merged.flux.auth.owner | default('') | string | length > 0
+      - config_render_merged.flux.auth.repository | default('') | string | length > 0
+      - config_render_merged.flux.auth.hostname | default('') | string | length > 0
+    fail_msg: >-
+      flux.provider: bitbucket-server with flux.auth.mode:
+      {{ config_render_merged.flux.auth.mode }} requires flux.auth.owner,
+      flux.auth.repository, and flux.auth.hostname to be non-empty.
+      These fields are used to construct the target repository for
+      flux bootstrap bitbucket-server.
+    quiet: true
+  when:
+    - config_render_merged.flux.provider == 'bitbucket-server'
+    - >-
+      config_render_merged.flux.auth.mode == 'provider-deploy-key'
+      or (
+        config_render_merged.flux.auth.mode == 'https-token'
+        and config_render_merged.flux.auth.owner | default('') | string | length > 0
+        and config_render_merged.flux.auth.repository | default('') | string | length > 0
+      )
+
+# --- URL format checks (gated: only when repoUrl is set AND consumed) ---
+# These checks only fire when the user has filled in repoUrl AND the command
+# builder will actually consume it. An empty repoUrl means Flux bootstrap isn't
+# configured yet, which is a runtime preflight concern, not a render-time schema
+# error.
+#
+# When a provider-specific bootstrap command runs (flux bootstrap github /
+# bitbucket-server), the target URL is constructed from owner + repository
+# (+ hostname) — repoUrl is advisory-only and never passed to the command.
+# We skip the format check for those cases so a stale or placeholder repoUrl
+# does not cause a false validation failure for a provider-specific flow.
+
+- name: Validate ssh-private-key mode requires SSH repoUrl
+  ansible.builtin.assert:
+    that:
+      - >-
+        config_render_merged.flux.repoUrl is defined
+        and config_render_merged.flux.repoUrl is string
+        and (config_render_merged.flux.repoUrl | string is match('^(ssh://|git@)'))
+    fail_msg: >-
+      flux.auth.mode: ssh-private-key requires an SSH repository URL
+      (starting with ssh:// or git@). Got repoUrl:
+      '{{ config_render_merged.flux.repoUrl | default('') }}'.
+      Example: ssh://git@github.com/org/repo.git
+    quiet: true
+  when:
+    - config_render_merged.flux.auth.mode == 'ssh-private-key'
+    - config_render_merged.flux.repoUrl | default('') | string | length > 0
+
+- name: Validate ssh-private-key mode requires privateKeyFile
+  ansible.builtin.assert:
+    that:
+      - config_render_merged.flux.auth.privateKeyFile | default('') | string | length > 0
+    fail_msg: >-
+      flux.auth.mode: ssh-private-key requires flux.auth.privateKeyFile to be a
+      non-empty path to the SSH private key file on the control machine.
+      Do NOT commit the key — this is a local file path, not the key body.
+    quiet: true
+  when:
+    - config_render_merged.flux.auth.mode == 'ssh-private-key'
+    - config_render_merged.flux.repoUrl | default('') | string | length > 0
+
+# https-token URL format check: only fire when the command builder will actually
+# consume repoUrl via `flux bootstrap git` (generic provider, or github/bitbucket-server
+# with owner/repo missing → falls back to generic). Skip when the provider-specific
+# bootstrap constructs the URL from owner + repository (github/bitbucket-server with
+# owner+repo set) — in that case repoUrl is not passed to any command and a format
+# mismatch is harmless.
+- name: Validate https-token mode requires HTTPS repoUrl (or allowInsecureHttp)
+  ansible.builtin.assert:
+    that:
+      - >-
+        config_render_merged.flux.repoUrl is defined
+        and config_render_merged.flux.repoUrl is string
+        and (config_render_merged.flux.repoUrl | string is match('^https://')
+             or (config_render_merged.flux.repoUrl | string is match('^http://')
+                 and (config_render_merged.flux.auth.allowInsecureHttp | default(false) | bool)))
+    fail_msg: >-
+      flux.auth.mode: https-token requires an HTTPS repository URL
+      (starting with https://). Got repoUrl:
+      '{{ config_render_merged.flux.repoUrl | default('') }}'.
+      If you must use plain HTTP, set flux.auth.allowInsecureHttp: true
+      (for development/testing only — never for production).
+    quiet: true
+  when:
+    - config_render_merged.flux.auth.mode == 'https-token'
+    - config_render_merged.flux.repoUrl | default('') | string | length > 0
+    - >-
+      config_render_merged.flux.provider == 'generic'
+      or config_render_merged.flux.auth.owner | default('') | string | length == 0
+      or config_render_merged.flux.auth.repository | default('') | string | length == 0

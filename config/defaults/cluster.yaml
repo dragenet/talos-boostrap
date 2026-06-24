@@ -39,9 +39,61 @@ provider:
   name: manual
 
 flux:
+  # Git provider for provider-specific bootstrap commands:
+  #   generic          → flux bootstrap git only (works with any Git host)
+  #   github           → flux bootstrap github (needs GITHUB_TOKEN for deploy-key creation)
+  #   bitbucket-server → flux bootstrap bitbucket-server (needs BITBUCKET_TOKEN; Server/DC only)
+  provider: generic
+  # HTTPS or SSH repository URL. Required for generic git flows; useful as display
+  # value / source of truth for all modes. Provider-deploy-key mode constructs its
+  # own URL from owner + repository — repoUrl is optional for that mode.
   repoUrl: ""
   repoBranch: main
   path: ""
+  auth:
+    # Authentication mode for flux bootstrap:
+    #   provider-deploy-key → provider-specific bootstrap creates a deploy/access key
+    #     via provider API token (GITHUB_TOKEN / BITBUCKET_TOKEN); token is NOT
+    #     stored in-cluster — only SSH key material lands in the Flux secret.
+    #   https-token → Flux authenticates over HTTPS using a token/password supplied
+    #     from SOPS-backed Ansible vars; token IS stored in the cluster as a Flux
+    #     source secret.
+    #   ssh-private-key → Flux authenticates over SSH using a user-provided private
+    #     key file (+ optional passphrase); key material IS stored in the cluster
+    #     as a Flux source secret.
+    mode: ssh-private-key
+    # HTTPS basic-auth username (usually "git" for most providers).
+    username: git
+    # Provider-specific repository owner (GitHub org/user) or project key (Bitbucket).
+    # Required for github + bitbucket-server when mode is provider-deploy-key or https-token.
+    owner: ""
+    # Provider-specific repository slug / name — required for github + bitbucket-server
+    # when mode is provider-deploy-key or https-token.
+    repository: ""
+    # Custom hostname for GitHub Enterprise or Bitbucket Server/DC (omit when using
+    # the standard cloud-hosted provider at github.com).
+    hostname: ""
+    # --personal flag: use personal account instead of organisation (GitHub only).
+    personal: false
+    # --private flag: create a private repository. Provider-specific bootstrap.
+    private: true
+    # --read-write-key flag. Provider-deploy-key mode only.
+    readWriteKey: false
+    # Use a bearer token (--with-bearer-token) instead of HTTPS basic auth for
+    # generic git flows. When true, the token is passed as a bearer token.
+    tokenAuthBearer: false
+    # Non-standard SSH host:port for Git SSH access (e.g. bitbucket.example.com:7999
+    # for Bitbucket Server/DC). Maps to --ssh-hostname on flux bootstrap.
+    sshHostname: ""
+    # Local path to the SSH private key file for ssh-private-key mode.
+    # Do NOT commit the key; this is a control-machine path, not a key body.
+    privateKeyFile: ""
+    # Custom CA certificate file for HTTPS connections.
+    caFile: ""
+    # Allow insecure HTTP connections (for development/testing only).
+    allowInsecureHttp: false
+    # --silent: assume deploy/access key is already set up (provider-deploy-key mode).
+    silent: false
 
 talos:
   # Talos Linux version — pin to a known-good release.
