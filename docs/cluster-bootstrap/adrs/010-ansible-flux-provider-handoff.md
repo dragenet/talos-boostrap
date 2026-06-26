@@ -27,21 +27,22 @@ The pre-Flux layer is driven by these core config keys plus provider:
   - (future) provider CSI when applicable.
 - Each pre-Flux component is installed via Helm into its own namespace (`cilium-system`, `hcloud-ccm-system`, etc.) using release names and values that match the Flux-managed HelmRelease. This lets Flux adopt them without conflict after `flux bootstrap`.
 
-After `flux bootstrap` runs, Flux picks up the provider overlay from the cluster entrypoint and reconciles the same components. The Flux infrastructure tree uses the catalog + render-generated base + user overlay layout (see ADR-011/012):
+After `flux bootstrap` runs, Flux picks up the provider overlay from the cluster entrypoint and reconciles the same components. The Flux infrastructure tree uses the catalog + render-generated selected + common overlay + per-cluster overlay layout (see ADR-011/012/017):
 
 ```
 flux/infrastructure/controllers/
-  _components/     # TEMPLATE-OWNED catalog of component bases (incl. providers/<name>/ for provider-gated)
-  base/            # RENDER-OWNED: the enabled components for this cluster (from core config + provider + features)
-  patches/         # USER-OWNED: kustomize strategic-merge patches
-  kustomization.yaml  # USER-OWNED overlay: resources:[base, ...]; patches:[patches/*]
+  _components/            # TEMPLATE-OWNED catalog of component bases (incl. providers/<name>/ for provider-gated)
+  generated/selected/     # RENDER-OWNED: enabled components for this cluster (core config + provider + features)
+  overlays/common/        # REPO-WIDE: shared patches across all clusters
+  overlays/clusters/<cluster>/  # PER-CLUSTER: cluster-specific patches
+  kustomization.yaml      # USER-OWNED overlay: resources:[overlays/clusters/<cluster>]
 ```
 
-The cluster entrypoint (`flux/clusters/<cluster>/infrastructure.yaml`) points at the user overlay. Provider selection flows from `cluster.yaml` `provider:` → the render includes the provider's components in `base/`. Per-component customization is a patch (tier 2); replacing a component is disable-and-deploy-your-own (tier 3) — see ADR-011.
+The cluster entrypoint (`flux/clusters/<cluster>/infrastructure.yaml`) points at the user overlay. Provider selection flows from `cluster.yaml` `provider:` → the render includes the provider's components in `generated/selected/`. Per-component customization is a patch (tier 2); replacing a component is disable-and-deploy-your-own (tier 3) — see ADR-011.
 
 ### What goes where
 
-| Component | Ansible pre-Flux | Flux (rendered into `base/`) | Reason |
+| Component | Ansible pre-Flux | Flux (rendered into `generated/selected/`) | Reason |
 |---|---|---|---|
 | CNI: Cilium (if `cni.name: cilium`) | ✅ install | ✅ adopt | CNI must exist before pods schedule. `flannel` needs no pre-Flux install. |
 | Provider CCM (if enabled) | ✅ install | ✅ adopt | Must clear `uninitialized` taint before Flux controllers schedule. |
@@ -52,10 +53,10 @@ The cluster entrypoint (`flux/clusters/<cluster>/infrastructure.yaml`) points at
 
 ## Consequences
 
-- Adding a new provider follows the single `providers/<name>/` rule (ADR-007): a catalog dir `_components/providers/<name>/`, an inventory, config, and the render including it in `base/`.
+- Adding a new provider follows the single `providers/<name>/` rule (ADR-007): a catalog dir `_components/providers/<name>/`, an inventory, config, and the render including it in `generated/selected/`.
 - The pre-Flux component list is rendered from `cni.name`, `cloud_controller_manager.enabled`, and `provider.name`; `manual` disables CCM automatically and omits cloud-specific CSI.
 - Components that cannot tolerate the `uninitialized` taint must stay out of the Ansible pre-Flux layer — they belong in Flux where the taint is already cleared.
-- `cluster.yaml` `provider:` is the single source for provider selection; the render derives both the Ansible inventory expectation and the Flux `base/` contents from it, so they cannot diverge.
+- `cluster.yaml` `provider:` is the single source for provider selection; the render derives both the Ansible inventory expectation and the Flux `generated/selected/` contents from it, so they cannot diverge.
 - Pre-Flux components run in dedicated `<component>-system` namespaces rather than `kube-system`, making ownership and RBAC clearer.
 
 > **Implementation status (2026-06-26):** Implemented. `flux bootstrap`, the Ansible pre-Flux install of Cilium / CCM, and the Flux adoption step are built. The `flux_bootstrap` role sequences preflight → namespaces → Cilium → hcloud CCM → Flux bootstrap. The render-generated `flux/infrastructure/controllers/generated/selected/kustomization.yaml` now includes enabled core components such as `../../_components/cilium` and `../../_components/providers/hcloud/ccm`, following the four-tier overlay model (ADR-017).

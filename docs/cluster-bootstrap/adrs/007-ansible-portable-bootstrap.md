@@ -15,7 +15,7 @@ inventories/  common/   providers/hcloud/   providers/manual/
 playbooks/    *.yml      providers/hcloud/*.yml
 roles/        talos_*/   providers/hcloud/*/
 config/       defaults/  overrides/          (+ providers/<name>.yaml)
-flux/infrastructure/controllers/  _components/  base/  providers/hcloud/
+flux/infrastructure/controllers/  _components/  generated/selected/  overlays/common/  overlays/clusters/<cluster>/
 ```
 
 Provider is selected with `-i inventories/common -i inventories/providers/<name>`; provider-specific playbooks live at `playbooks/providers/<name>/`. All other playbooks are provider-agnostic.
