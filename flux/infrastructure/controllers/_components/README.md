@@ -4,7 +4,7 @@
 
 This directory is a **sparse catalog** of controller component bases. Each
 subdirectory is an ordinary kustomize base that can be referenced from
-`../base/kustomization.yaml` when the render compiler enables it for a cluster.
+`../generated/selected/kustomization.yaml` when the render compiler enables it for a cluster.
 
 ## Catalog contract
 
@@ -18,7 +18,7 @@ subdirectory is an ordinary kustomize base that can be referenced from
   ordinary bases by default.
 - A future entry that is genuinely transform-only (e.g. a label transformer or
   name prefix applied across other bases) may use `kind: Component` and be
-  listed under `components:` in `../base/kustomization.yaml`. That is not the
+  listed under `components:` in `../generated/selected/kustomization.yaml`. That is not the
   default for controllers.
 
 ## Directory structure
@@ -34,18 +34,25 @@ _components/
 ```
 
 Provider-gated components live under `providers/<name>/` and are only included
-in `base/` when `cluster.yaml` `provider.name` matches. See ADR-010 and ADR-012.
+in `generated/selected/` when `cluster.yaml` `provider.name` matches. See ADR-010 and ADR-012.
 
 ## Current state
 
-This catalog is **sparse** — only directory placeholders exist. Actual component
-bases (Cilium, hcloud CCM, hcloud CSI, cert-manager, OpenEBS, ingress) are
-deferred feature work. The render compiler will populate `../base/` with
-references to catalog entries once feature work lands.
+Implemented catalog entries (each a full Namespace + HelmRepository +
+HelmRelease base, chart versions pinned, ready for Flux adoption):
+
+- `cilium/` — Cilium CNI (kube-proxy replacement, VXLAN tunnel; chart 1.19.5).
+- `providers/hcloud/ccm/` — Hetzner Cloud Controller Manager (chart 1.33.0).
+
+The render compiler references the enabled entries from
+`../generated/selected/kustomization.yaml` (render-owned). Future entries
+(hcloud CSI, cert-manager, OpenEBS, ingress) follow the same pattern and are
+added by flipping the matching `features.*` flag in the selected-cluster
+config and re-rendering.
 
 ## Adding a new catalog entry
 
 1. Create `_components/<feature>/kustomization.yaml` as an ordinary base.
 2. Add the feature toggle to `config/defaults/cluster.yaml` schema.
-3. Update the render compiler to include the entry in `../base/` when enabled.
+3. Update the render compiler to include the entry in `../generated/selected/` when enabled.
 4. If Talos-coupled (e.g. CNI, OpenEBS), also update Talos patch rendering.

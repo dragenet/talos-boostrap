@@ -78,7 +78,8 @@
       - flux_repo_url is defined
       - flux_repo_url | string | length > 0
     fail_msg: >-
-      flux_repo_url is empty. Set flux.repoUrl in config/overrides/cluster.yaml,
+      flux_repo_url is empty. Set flux.repoUrl in
+      config/clusters/{{ config_cluster }}/cluster.yaml,
       then re-run 'ansible-playbook playbooks/render-config.yml'.
   when:
     - flux_bootstrap_preflight_existing.stdout | trim | length == 0

@@ -7,10 +7,11 @@
 # flux/infrastructure/controllers/_components/cilium/helmrelease.yaml so
 # Flux detects the existing release and adopts it on first reconciliation.
 #
-# Values include both the Flux-adopted set (kubeProxyReplacement, tunnel
-# routing, KubePrism endpoint) and Talos-required values not yet present in
-# the Flux HelmRelease (cgroup mounts, securityContext capabilities, BPF
-# legacy routing, IPAM mode). See defaults/main.yml for the full set.
+# Values match the Flux-adopted HelmRelease exactly: the Flux-adopted set
+# (kubeProxyReplacement, tunnel routing, KubePrism endpoint) plus the
+# Talos-required values (cgroup mounts, securityContext capabilities, BPF
+# legacy routing, IPAM mode), all declared in both places. See
+# defaults/main.yml for the full set.
 #
 # kubernetes.core.helm is idempotent: it compares the desired state against
 # the current release and only reports changed when values, chart version,

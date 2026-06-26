@@ -41,16 +41,16 @@ flux_bootstrap_cilium_timeout: 10m
 
 # Helm values for the Cilium install.
 #
-# Values marked "Flux" match the Flux adoption HelmRelease exactly.
-# Values marked "Talos" are required for Cilium to run on Talos Linux but
-# are NOT yet present in the Flux HelmRelease — see the k8s-implementor
-# report after this role lands.
+# Every value here matches the Flux adoption HelmRelease exactly
+# (flux/infrastructure/controllers/_components/cilium/helmrelease.yaml) so
+# Helm adoption is clean and Flux drift detection stays accurate. Values
+# required for Cilium to run on Talos Linux (IPAM mode, cgroup mounts,
+# securityContext capabilities, BPF legacy routing) are declared in BOTH
+# places — the pre-Flux Ansible install and the Flux HelmRelease.
 #
-# The full set is installed by Ansible so Cilium actually works. When Flux
-# later adopts the release, it will respect whichever values the release
-# currently has (Helm 3 three-way merge), so the Talos-required values
-# persist across adoption. However, the Flux HelmRelease should still be
-# updated to declare them explicitly so drift detection works correctly.
+# The full set is installed by Ansible so Cilium actually works pre-Flux;
+# Flux later adopts the release and the values persist (Helm 3 three-way
+# merge).
 flux_bootstrap_cilium_values:
   # --- Flux-adopted values ---
   kubeProxyReplacement: true
@@ -67,7 +67,7 @@ flux_bootstrap_cilium_values:
   k8sServiceHost: localhost
   k8sServicePort: "7445"
 
-  # --- Talos-required values (not in Flux HelmRelease yet) ---
+  # --- Talos-required values (also declared in the Flux HelmRelease) ---
   # Talos assigns PodCIDRs to Node resources — Cilium must use
   # ipam.mode=kubernetes to consume them.
   ipam:
