@@ -1,0 +1,13 @@
+---
+# config/talos/base/all.yaml — TEMPLATE-OWNED Talos base patch for all node types.
+#
+# This file contains Talos machine configuration patches applied to every node
+# regardless of role. It is cluster-agnostic: any cluster consuming this template
+# gets these patches.
+#
+# Currently empty — add patches here for settings that should apply to every
+# cluster built from this template (e.g. timezone, kernel args, sysctls).
+#
+# ADR-016: this is a Talos-shaped machine config patch manifest. The render
+# compiler composes it into the generated patch stack before cluster overlays
+# and after the upstream Talos generated machine config.

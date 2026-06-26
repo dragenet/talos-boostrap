@@ -1,15 +1,19 @@
 ---
-# yaml-language-server: $schema=../schemas/cluster-input.schema.json
-# config/overrides/cluster.yaml — LEGACY FALLBACK (migration compatibility only).
+# yaml-language-server: $schema=../../schemas/cluster-input.schema.json
+# config/clusters/kube1/cluster.yaml — USER-OWNED kube1-specific choices.
 #
-# The active source of truth for the kube1 cluster is:
-#   config/clusters/kube1/cluster.yaml
-# This file is a legacy fallback that the render compiler uses only when the
-# selected-cluster file (config/clusters/kube1/cluster.yaml) is absent.
-# Edit config/clusters/kube1/cluster.yaml instead, then run:
+# This file carries every value that differs from the template defaults for
+# the kube1 cluster. The render deep-merges this over config/defaults/cluster.yaml
+# (overrides win per-key) and emits generated group_vars consumed by Ansible roles.
+#
+# This is the ADR-016 selected-cluster input path, loaded when
+# config_cluster=kube1 (the default). For the legacy overrides fallback, see
+# config/overrides/cluster.yaml — the render compiler falls back to that path
+# only when the selected-cluster file is absent.
+#
+# Edit THIS file to change cluster configuration, then run:
 #   ansible-playbook playbooks/render-config.yml -e config_cluster=kube1
-#
-# Kept for compatibility during the ADR-016 migration. Do not add new config here.
+# Review the generated diffs before running live playbooks.
 #
 # Migrated from the pre-refactor hand-authored group_vars:
 #   inventories/common/group_vars/all/{cluster,talos,flux}.yml

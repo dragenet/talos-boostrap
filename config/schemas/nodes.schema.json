@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kube1.local/schemas/nodes.schema.json",
+  "title": "kube1 per-node overrides",
+  "type": "object",
+  "required": ["nodes"],
+  "additionalProperties": false,
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "name": { "type": "string" },
+          "role": { "type": "string" },
+          "network": { "type": "object" },
+          "patch": {}
+        }
+      }
+    }
+  }
+}

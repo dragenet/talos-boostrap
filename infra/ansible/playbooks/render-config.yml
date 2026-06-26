@@ -1,9 +1,14 @@
 ---
-# render-config.yml — Config compiler (ADR-011).
+# render-config.yml — Config compiler (ADR-011, ADR-016).
 #
-# Reads config/defaults/cluster.yaml + config/overrides/cluster.yaml +
-# config/overrides/nodes.yaml, deep-merges (overrides win), validates, and
-# emits generated group_vars with current variable names preserved.
+# Reads config/defaults/cluster.yaml + config/clusters/<cluster>/cluster.yaml +
+# config/clusters/<cluster>/nodes.yaml (ADR-016 selected-cluster path), deep-merges
+# (overrides win), validates, and emits generated group_vars with current variable
+# names preserved.
+#
+# Also composes shared Talos patch manifests from config/talos/base/,
+# config/talos/components/, and config/clusters/<cluster>/talos/ into the
+# infra/talos/patches/generated/ compatibility tree (ADR-016).
 #
 # This playbook runs on localhost, gathers no facts, and is side-effect-free
 # outside the repository tree. It does NOT contact Hetzner, Kubernetes, Talos
@@ -14,9 +19,17 @@
 #   Check:   render to a temp directory and diff against committed generated
 #            files for drift detection. Use --extra-vars config_render_check=true.
 #
+# Cluster selection (ADR-016):
+#   The selected cluster determines which config/clusters/<name>/ directory is
+#   loaded. Defaults to kube1. Override with -e config_cluster=<name>.
+#   Legacy fallback: if config/clusters/<name>/cluster.yaml is absent, the
+#   compiler loads config/overrides/cluster.yaml instead with a deprecation warning.
+#
 # Usage:
 #   ansible-playbook playbooks/render-config.yml
+#   ansible-playbook playbooks/render-config.yml -e config_cluster=kube1
 #   ansible-playbook playbooks/render-config.yml -e config_render_check=true
+#   ansible-playbook playbooks/render-config.yml -e config_cluster=kube1 -e config_render_check=true
 - name: Render cluster configuration
   hosts: localhost
   gather_facts: false

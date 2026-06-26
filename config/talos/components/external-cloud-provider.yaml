@@ -1,0 +1,22 @@
+---
+# config/talos/components/external-cloud-provider.yaml — TEMPLATE-OWNED
+# Talos component: enable external cloud provider for cloud controller managers.
+#
+# Selected by the render compiler when cloud_controller_manager resolves to
+# enabled AND the provider has a supported CCM (hcloud only today).
+#
+# Applied to ALL node roles via --config-patch so every kubelet runs with
+# --cloud-provider=external, allowing the CCM to initialise nodes (set
+# spec.providerID, clear the node.cloudprovider.kubernetes.io/uninitialized
+# taint, attach topology labels).
+#
+# ⚠️  Do not set this without a CCM installed — nodes would be permanently
+# tainted with no process to clear the uninitialized taint. The render compiler
+# gates this component on a validated CCM selection.
+#
+# ADR-016: this is a Talos-shaped machine config patch manifest. The render
+# compiler copies it into the generated patch stack after base + cluster
+# overlays and before computed integration fragments.
+cluster:
+  externalCloudProvider:
+    enabled: true

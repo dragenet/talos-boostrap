@@ -72,16 +72,25 @@ behind dynamic inventory over static host lists.
 
 > **`group_vars/all/<provider>.yml` is render-generated** by
 > `playbooks/render-config.yml`. Provider-specific vars (region, server type, etc.)
-> live under the provider key in `config/overrides/cluster.yaml` (e.g. `hcloud: ...`).
-> The render compiler reads that key and emits the provider's `group_vars` file. Don't
+> live under the provider key in `config/clusters/kube1/cluster.yaml`
+> (e.g. `hcloud: ...`) — the selected-cluster source of truth (ADR-016). The render
+> compiler reads that key and emits the provider's `group_vars` file. Don't
 > hand-edit the generated file — the next render overwrites it.
 
 1. Create `inventories/providers/<provider>/` with:
    - `<provider>.yml` — dynamic plugin config, or `hosts.yml` — static host list
    - `group_vars/all/<provider>.sops.yaml` (if the provider needs an API token)
-   - Provider-specific values are added to `config/overrides/cluster.yaml` (or
-     `config/defaults/cluster.yaml` for provider-agnostic defaults) — the renderer
-     emits `group_vars/all/<provider>.yml` from them.
+   - Provider-specific values are added to `config/clusters/kube1/cluster.yaml`
+     under the new provider's top-level key (e.g. `hcloud: ...`, `do: ...`).
+     The renderer deep-merges that file over `config/defaults/cluster.yaml` and
+     emits `group_vars/all/<provider>.yml` from the result.
+
+     > **`config/defaults/cluster.yaml` is template-owned.** It carries
+     > provider-agnostic defaults shared by every cluster built from this template
+     > (ADR-011). Don't add provider-specific values there — they belong in
+     > `config/clusters/<name>/cluster.yaml`. Template-level defaults land in
+     > `config/defaults/` only as part of an upstream template update, never as a
+     > per-cluster edit.
 
    > **Dynamic inventories need API credentials at load time.** The inventory plugin
    > runs before `group_vars` are loaded, so it cannot read `group_vars` for
@@ -121,8 +130,8 @@ No changes to `talos_config`, `talos_upgrade`, or `flux_bootstrap` are needed.
 
 `inventories/providers/hcloud/` and `playbooks/providers/hcloud/` are the canonical example. Key patterns:
 - `hcloud_topology` count map (in the generated `group_vars/all/hcloud.yml`, sourced
-  from `config/overrides/cluster.yaml` `hcloud.topology`) drives server creation — no
-  static host list needed.
+  from `config/clusters/kube1/cluster.yaml` `hcloud.topology`) drives server creation —
+  no static host list needed.
 - Server labels (`cluster=kube1`, `role=hybrid`) are the bridge between provisioning and
   the dynamic inventory plugin.
 - `hcloud.sops.yaml` holds the API token (user/secret-owned, never rendered); the

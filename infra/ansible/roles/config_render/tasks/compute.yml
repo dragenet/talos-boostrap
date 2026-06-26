@@ -67,6 +67,36 @@
            else [])
       }}
 
+# --- config_render_talos_components ---
+# ADR-016: ordered list of shared Talos component manifest names selected from
+# config/talos/components/ based on feature flags. Each entry maps to a source
+# file config/talos/components/<name>.yaml.
+#
+# Matches the bootstrap_pre_flux_components logic but tracks Talos-side
+# components rather than Flux-side Helm releases. The two lists are separate
+# because not every Flux component has a Talos-side counterpart and vice versa.
+# Initial mapping:
+#   cni.name == cilium         → includes 'cilium'
+#   hcloud CCM resolved true   → includes 'external-cloud-provider'
+#   features.hcloudCsi == true → (deferred) would include 'hcloud-csi'
+#   features.certManager       → (deferred) may include 'cert-manager' Talos config
+#
+# The list is ordered to reflect the recommended component layering:
+# earlier components apply first, later components override where they conflict.
+# Per-node overlays always apply last (handled in render_talos.yml).
+
+- name: Compute selected Talos components
+  ansible.builtin.set_fact:
+    config_render_talos_components: >-
+      {{
+        (['cilium'] if config_render_merged.cni.name == 'cilium' else [])
+        + (['external-cloud-provider']
+           if (config_render_ccm_resolved | default(false) | bool
+               and config_render_merged.provider.name == 'hcloud'
+               and config_render_merged.cni.name == 'cilium')
+           else [])
+      }}
+
 # --- cluster_external_cloud_provider_enabled ---
 # Computed: true iff the CCM tri-state resolved to enabled AND provider has a
 # supported CCM AND the provider-specific CCM component is in the pre-Flux set.

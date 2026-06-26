@@ -9,10 +9,34 @@
 # playbook_dir = infra/ansible/playbooks → ../../.. = repo root.
 config_render_repo_root: "{{ playbook_dir }}/../../.."
 
-# Config input paths (user/template-owned).
+# Selected cluster name (ADR-016). Set via -e config_cluster=kube1 or left at
+# the default. The selected cluster determines which config/clusters/<name>/
+# path is loaded for provider/features/versions/nodes.
+config_cluster: kube1  # noqa: var-naming[no-role-prefix] — user-facing cluster selector, -e config_cluster=<name>
+
+# ─── Selected-cluster input paths (ADR-016) ────────────────────────────────
+# These are the primary input paths. config/defaults/cluster.yaml is always
+# loaded; the selected-cluster files are deep-merged as overrides.
+config_render_cluster_dir: "{{ config_render_repo_root }}/config/clusters/{{ config_cluster }}"
+config_render_cluster_config_path: "{{ config_render_cluster_dir }}/cluster.yaml"
+config_render_cluster_nodes_path: "{{ config_render_cluster_dir }}/nodes.yaml"
+
+# ─── Legacy overrides fallback paths ───────────────────────────────────────
+# Kept for compatibility during migration (ADR-016 staged compatibility).
+# Used only when the selected-cluster files above do not exist. Emits a
+# deprecation warning when the fallback is consumed.
 config_render_defaults_path: "{{ config_render_repo_root }}/config/defaults/cluster.yaml"
 config_render_overrides_path: "{{ config_render_repo_root }}/config/overrides/cluster.yaml"
 config_render_nodes_path: "{{ config_render_repo_root }}/config/overrides/nodes.yaml"
+
+# ─── Shared Talos source paths (ADR-016) ───────────────────────────────────
+# Template-owned, cluster-agnostic Talos patch manifest directories.
+config_render_talos_base_dir: "{{ config_render_repo_root }}/config/talos/base"
+config_render_talos_components_dir: "{{ config_render_repo_root }}/config/talos/components"
+# Cluster-specific Talos overlays directory.
+config_render_cluster_talos_dir: "{{ config_render_cluster_dir }}/talos"
+# Per-node Talos overlays directory (flat .yaml files named by node name).
+config_render_cluster_talos_nodes_dir: "{{ config_render_cluster_talos_dir }}/nodes"
 
 # Generated output paths (render-owned).
 config_render_output_common: "{{ config_render_repo_root }}/infra/ansible/inventories/common/group_vars/all"
@@ -25,10 +49,21 @@ config_render_output_manual: "{{ config_render_repo_root }}/infra/ansible/invent
 # optional per-node directories.
 config_render_output_talos_patches: "{{ config_render_repo_root }}/infra/talos/patches/generated"
 
-# Generated Flux base output path (render-owned, ADR-010 catalog/base/overlay).
-# The base kustomization.yaml is render-owned: the render compiler populates it
-# with enabled catalog entries from _components/ based on cluster.yaml.
+# Generated Flux controllers output paths (render-owned, ADR-010/012/017).
+# Two paths during ADR-017 staged migration:
+#   base/                   — LEGACY (deprecated), kept for backward compatibility.
+#                             The render compiler populates it with the same selected
+#                             catalog entries as generated/selected/.
+#                             Will be removed in a cleanup phase after the per-cluster
+#                             overlay switch (Phase 4-5 of ADR-017 migration).
+#   generated/selected/     — New render-owned selected set (ADR-017 explicit ownership).
+#                             The render compiler populates exclusively the catalog
+#                             entries enabled by cluster.yaml feature flags and
+#                             provider selection. Edit config/overrides/cluster.yaml
+#                             to change component enablement, then re-render with
+#                             `ansible-playbook playbooks/render-config.yml`.
 config_render_output_flux_base: "{{ config_render_repo_root }}/flux/infrastructure/controllers/base"
+config_render_output_flux_controllers_selected: "{{ config_render_repo_root }}/flux/infrastructure/controllers/generated/selected"
 
 # Check/drift mode: when true, render to a temp directory and diff against
 # committed generated files instead of writing in-place.

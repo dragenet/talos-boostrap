@@ -1,4 +1,5 @@
 {{ config_render_header }}
+{{ '{% raw %}' }}
 ---
 # Layer 2 raw fragments: control-plane-only patches.
 # Source: talos.patches.controlplane (cluster.yaml)
@@ -13,3 +14,4 @@
 {% for fragment in config_render_merged.talos.patches.controlplane %}
 {{ fragment | indent(0, first=false) }}
 {% endfor %}
+{{ '{% endraw %}' }}

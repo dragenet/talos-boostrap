@@ -1,6 +1,6 @@
 # ADR-013: Layered Talos config — structured helpers + raw fragments
 
-**Status:** Accepted
+**Status:** Superseded by ADR-016
 
 ## Context
 

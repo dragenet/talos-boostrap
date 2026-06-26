@@ -1,0 +1,11 @@
+---
+# config/talos/base/controlplane.yaml — TEMPLATE-OWNED Talos base patch for
+# control-plane nodes (etcd members). Cluster-agnostic.
+#
+# Currently empty — add patches here for control-plane-specific settings that
+# apply to every cluster built from this template (e.g. etcd tuning, scheduling
+# config for pure control-plane nodes).
+#
+# ADR-016: this is a Talos-shaped machine config patch manifest, applied via
+# --config-patch-control-plane. The render compiler composes it into the
+# generated patch stack before cluster overlays and components.

@@ -1,13 +1,23 @@
 ---
-# config/overrides/nodes.yaml — USER-OWNED per-node hardware configuration.
+# yaml-language-server: $schema=../schemas/nodes.schema.json
+# config/overrides/nodes.yaml — LEGACY FALLBACK (migration compatibility only).
+#
+# The active source of truth for kube1 per-node configuration is:
+#   config/clusters/kube1/nodes.yaml  (hardware identities)
+#   config/clusters/kube1/talos/nodes/*.yaml  (Talos-shaped per-node patches, ADR-016)
+# This file is a legacy fallback that the render compiler uses only when the
+# selected-cluster file (config/clusters/kube1/nodes.yaml) is absent.
+# Edit config/clusters/kube1/nodes.yaml instead.
+#
+# Kept for compatibility during the ADR-016 migration. Do not add new config here.
 #
 # Per-node overrides for hardware-specific settings (disk selectors, network
-# device selectors, raw Talos patches). The ADR-014 inventory already supplies
+# device selectors). The ADR-014 inventory already supplies
 # node public/private IPs and roles, so this file starts empty.
 #
 # Future/manual use: when nodes have heterogeneous hardware (different NICs,
-# disk layouts, etc.), add entries here. Per-node patches are Layer 2 raw
-# fragments (ADR-013) applied after cluster-wide patches.
+# disk layouts, etc.), add entries to config/clusters/kube1/nodes.yaml.
+# Per-node Talos machine configuration patches go in talos/nodes/*.yaml.
 #
 # Example shape:
 #   nodes:
@@ -17,6 +27,5 @@
 #         interfaces:
 #           - name: private
 #             deviceSelector: null   # MAC or PCI selector when known
-#       patch: []                    # raw Talos YAML fragments for this node
 
 nodes: []

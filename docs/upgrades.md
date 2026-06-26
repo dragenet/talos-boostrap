@@ -4,7 +4,7 @@
 
 | Scenario | Playbook chain | What it does |
 |---|---|---|
-| Config-only change (no OS upgrade) | `render-config.yml` → `bootstrap-talos.yml` | Re-renders generated group_vars + Talos patches from `config/overrides/`, then re-applies machine config with `--mode no-reboot`; Talos applies live where possible |
+| Config-only change (no OS upgrade) | `render-config.yml` → `bootstrap-talos.yml` | Re-renders generated group_vars + Talos patches from `config/clusters/kube1/`, then re-applies machine config with `--mode no-reboot`; Talos applies live where possible |
 | OS version or schematic change | `render-config.yml` → `image-talos.yml` (hcloud) → `upgrade-talos.yml` | Re-renders, builds a new snapshot if needed, then upgrades each node's OS one at a time with a health check between |
 
 Always prefer `bootstrap-talos.yml` for config-only changes. Use `upgrade-talos.yml`
@@ -12,13 +12,17 @@ only when `talos.version` or `talos.extensions` has changed — it reboots each 
 sequentially, which takes longer and has higher blast radius.
 
 The render step (`playbooks/render-config.yml`) is the source of truth: it reads
-`config/overrides/cluster.yaml` and `config/overrides/nodes.yaml` and emits the
-generated `inventories/.../group_vars/` + `infra/talos/patches/generated/` tree.
-Hand-editing generated files is a no-op — the next render overwrites them.
+the selected cluster's inputs under `config/clusters/kube1/` — `cluster.yaml`
+(provider/features/versions/Flux repo), `nodes.yaml` (node list/roles), and the
+Talos-shaped patch overlays under `config/clusters/kube1/talos/*` (per-role and
+per-node) — and emits the generated `inventories/.../group_vars/` +
+`infra/talos/patches/generated/` tree. Hand-editing generated files is a no-op —
+the next render overwrites them. The legacy `config/overrides/` tree still exists
+as a migration fallback but is no longer the primary source of truth.
 
 ## Upgrading the Talos version
 
-1. Edit `talos.version` in `config/overrides/cluster.yaml`.
+1. Edit `talos.version` in `config/clusters/kube1/cluster.yaml`.
 2. Re-render generated group_vars + Talos patches:
    ```bash
    cd infra/ansible
@@ -45,7 +49,7 @@ Hand-editing generated files is a no-op — the next render overwrites them.
 Same procedure as version upgrade — a new schematic ID means a new installer image URL,
 which is treated as an OS-level change by Talos.
 
-1. Edit `talos.extensions.base` (and/or `talos.extensions.extra`) in `config/overrides/cluster.yaml`.
+1. Edit `talos.extensions.base` (and/or `talos.extensions.extra`) in `config/clusters/kube1/cluster.yaml`.
 2. Re-render and clear the schematic cache so it's re-resolved from factory.talos.dev:
    ```bash
    cd infra/ansible
@@ -98,4 +102,4 @@ Talos keeps the previous image on disk. To roll back a single node:
 talosctl upgrade --nodes <IP> --talosconfig infra/talos/secrets/talosconfig \
   --image factory.talos.dev/installer/<previous-schematic-id>:<previous-version> --wait
 ```
-The previous schematic ID is in git history (`config/overrides/cluster.yaml`) or the Hetzner snapshot labels.
+The previous schematic ID is in git history (`config/clusters/kube1/cluster.yaml` for the version/extensions that produced it) or the Hetzner snapshot labels.

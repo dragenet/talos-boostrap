@@ -1,0 +1,23 @@
+---
+# config/talos/components/cilium.yaml — TEMPLATE-OWNED
+# Talos component: Talos-side requirements for Cilium CNI.
+#
+# Selected by the render compiler when cni.name == 'cilium'.
+#
+# Disables in-cluster CNI management (cni.name: none) because Cilium is
+# installed pre-Flux by bootstrap-flux.yml. Also disables kube-proxy since
+# Cilium replaces it (eBPF-based service forwarding, no iptables).
+#
+# Applied to control-plane nodes via --config-patch-control-plane. Talos
+# applies CNI configs cluster-wide through etcd consensus, so patching
+# control-plane nodes propagates the disablement to the entire cluster.
+#
+# ADR-016: this is a Talos-shaped machine config patch manifest. The render
+# compiler copies it into the generated patch stack after base + cluster
+# overlays and before computed integration fragments.
+cluster:
+  network:
+    cni:
+      name: none  # Cilium installed pre-Flux in bootstrap-flux.yml
+  proxy:
+    disabled: true  # Cilium replaces kube-proxy

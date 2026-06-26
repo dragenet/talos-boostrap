@@ -1,0 +1,27 @@
+{{ config_render_header }}
+---
+# Layer 1 structured helper: kube-apiserver TLS certificate SANs.
+# Source: cluster.certSANs.kubernetes (cluster.yaml)
+#
+# Extra addresses kubectl uses to reach the API server (Tailscale IPs, DNS
+# aliases, Cloudflare Tunnel hostnames, etc.). Kubernetes already includes the
+# VIP and cluster_endpoint by default — add here only additional addresses
+# your kubectl client reaches the API server through.
+#
+# Applied to control-plane nodes via --config-patch-control-plane because
+# kube-apiserver runs only on control-plane and hybrid nodes.
+#
+# Split from the former 10-cni-proxy.yaml.j2 (ADR-016: static CNI/proxy content
+# moved to config/talos/components/cilium.yaml; certSANs remain computed because
+# they come from cluster.certSANs in the non-Talos schema).
+{% if config_render_merged.cluster.certSANs.kubernetes | default([]) | length > 0 %}
+cluster:
+  apiServer:
+    # Extra SANs for the kube-apiserver certificate (port 6443).
+    # Kubernetes already includes the VIP and cluster_endpoint; list here any
+    # additional addresses kubectl will use (Tailscale IPs, DNS aliases, etc.).
+    certSANs:
+{% for san in config_render_merged.cluster.certSANs.kubernetes %}
+      - {{ san }}
+{% endfor %}
+{% endif %}

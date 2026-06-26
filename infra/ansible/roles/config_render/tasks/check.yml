@@ -87,7 +87,7 @@
 
 # --- Flux base kustomization drift detection ---
 
-- name: Diff Flux controllers base kustomization
+- name: Diff Flux controllers base kustomization (legacy, deprecated)
   ansible.builtin.command:
     argv:
       - diff
@@ -95,6 +95,20 @@
       - "{{ config_render_repo_root }}/flux/infrastructure/controllers/base/kustomization.yaml"
       - "{{ config_render_temp_dir }}/flux/infrastructure/controllers/base/kustomization.yaml"
   register: config_render_diff_flux_base
+  failed_when: false
+  changed_when: false
+  check_mode: false
+
+# --- Flux generated/selected kustomization drift detection (new, ADR-017) ---
+
+- name: Diff Flux controllers selected kustomization (generated/selected/)
+  ansible.builtin.command:
+    argv:
+      - diff
+      - "-u"
+      - "{{ config_render_repo_root }}/flux/infrastructure/controllers/generated/selected/kustomization.yaml"
+      - "{{ config_render_temp_dir }}/flux/infrastructure/controllers/generated/selected/kustomization.yaml"
+  register: config_render_diff_flux_selected
   failed_when: false
   changed_when: false
   check_mode: false
@@ -119,7 +133,8 @@
         (config_render_diff_hcloud.rc | default(0) == 1) or
         (config_render_diff_manual.rc | default(0) == 1) or
         (config_render_diff_talos_patches.rc | default(0) == 1) or
-        (config_render_diff_flux_base.rc | default(0) == 1)
+        (config_render_diff_flux_base.rc | default(0) == 1) or
+        (config_render_diff_flux_selected.rc | default(0) == 1)
       }}
     config_render_has_diff_error: >-
       {{
@@ -129,7 +144,8 @@
         (config_render_diff_hcloud.rc | default(0) > 1) or
         (config_render_diff_manual.rc | default(0) > 1) or
         (config_render_diff_talos_patches.rc | default(0) > 1) or
-        (config_render_diff_flux_base.rc | default(0) > 1)
+        (config_render_diff_flux_base.rc | default(0) > 1) or
+        (config_render_diff_flux_selected.rc | default(0) > 1)
       }}
   changed_when: false
 
@@ -170,8 +186,12 @@
       {{ config_render_diff_talos_patches.stderr }}
       {% endif %}
       {% if config_render_diff_flux_base.stderr | default('') | length > 0 %}
-      --- Flux base kustomization stderr (rc={{ config_render_diff_flux_base.rc | default('?') }}) ---
+      --- Flux base kustomization (legacy) stderr (rc={{ config_render_diff_flux_base.rc | default('?') }}) ---
       {{ config_render_diff_flux_base.stderr }}
+      {% endif %}
+      {% if config_render_diff_flux_selected.stderr | default('') | length > 0 %}
+      --- Flux selected kustomization (generated/selected/) stderr (rc={{ config_render_diff_flux_selected.rc | default('?') }}) ---
+      {{ config_render_diff_flux_selected.stderr }}
       {% endif %}
   when: config_render_has_diff_error | bool
 
@@ -217,9 +237,14 @@
       {{ config_render_diff_talos_patches.stderr | default('') }}
       {% endif %}
       {% if config_render_diff_flux_base.rc | default(0) == 1 %}
-      --- Flux base kustomization drift ---
+      --- Flux base kustomization drift (legacy) ---
       {{ config_render_diff_flux_base.stdout }}
       {{ config_render_diff_flux_base.stderr | default('') }}
+      {% endif %}
+      {% if config_render_diff_flux_selected.rc | default(0) == 1 %}
+      --- Flux selected kustomization drift (generated/selected/) ---
+      {{ config_render_diff_flux_selected.stdout }}
+      {{ config_render_diff_flux_selected.stderr | default('') }}
       {% endif %}
   when: config_render_has_drift | bool and not (config_render_has_diff_error | bool)
 

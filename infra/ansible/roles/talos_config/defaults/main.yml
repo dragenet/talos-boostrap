@@ -11,12 +11,15 @@ talos_config_worker_config: "{{ talos_config_secrets_dir }}/worker.yaml"
 talos_config_talosconfig: "{{ talos_config_secrets_dir }}/talosconfig"
 talos_config_kubeconfig: "{{ talos_config_secrets_dir }}/kubeconfig"
 
-# Generated patch directories (ADR-013 layered model).
+# Generated patch directories (ADR-016 layered model, ADR-013 compatibility tree).
 # The config_render role generates ordered .yaml.j2 templates here;
 # talos_config discovers them at bootstrap time and applies in order.
+# Scopes: all (every node), controlplane (etcd members), worker (workload-only
+# nodes), nodes (per-node overlays). Hybrid nodes consume controlplane config.
 talos_config_generated_patches_dir: "{{ talos_config_patches_dir }}/generated"
 talos_config_generated_all_dir: "{{ talos_config_generated_patches_dir }}/all"
 talos_config_generated_cp_dir: "{{ talos_config_generated_patches_dir }}/controlplane"
+talos_config_generated_worker_dir: "{{ talos_config_generated_patches_dir }}/worker"
 talos_config_generated_nodes_dir: "{{ talos_config_generated_patches_dir }}/nodes"
 
 # Rendered patch output directory (inside secrets dir, which is gitignored).

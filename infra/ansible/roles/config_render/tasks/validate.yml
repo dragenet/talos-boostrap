@@ -16,14 +16,14 @@
   ansible.builtin.assert:
     that:
       - config_render_merged.cluster.name | default('') | length > 0
-    fail_msg: "cluster.name must be set in config/overrides/cluster.yaml"
+    fail_msg: "cluster.name must be set in config/clusters/{{ config_cluster }}/cluster.yaml"
     quiet: true
 
 - name: Validate cluster.vip is set
   ansible.builtin.assert:
     that:
       - config_render_merged.cluster.vip | default('') | length > 0
-    fail_msg: "cluster.vip must be set in config/overrides/cluster.yaml"
+    fail_msg: "cluster.vip must be set in config/clusters/{{ config_cluster }}/cluster.yaml"
     quiet: true
 
 - name: Validate provider.name is valid
@@ -132,7 +132,7 @@
     fail_msg: >-
       features.cni is a stale transitional key (config schema migration, June 2026).
       It has graduated to the top-level cni.name key. Move this value from
-      features.cni to cni.name in config/overrides/cluster.yaml.
+      features.cni to cni.name in config/clusters/{{ config_cluster }}/cluster.yaml.
       Example: cni:\n  name: cilium
     quiet: true
 
@@ -144,7 +144,7 @@
       features.hcloudCcm is a stale transitional key (config schema migration,
       June 2026). It has graduated to the top-level cloud_controller_manager.enabled
       key. Move this value from features.hcloudCcm to
-      cloud_controller_manager.enabled in config/overrides/cluster.yaml.
+      cloud_controller_manager.enabled in config/clusters/{{ config_cluster }}/cluster.yaml.
       Example: cloud_controller_manager:\n  enabled: true
     quiet: true
 
@@ -204,7 +204,7 @@
     fail_msg: >-
       talos.network.vip is no longer a schema key. The VIP has a single source
       of truth at cluster.vip. Remove talos.network.vip from
-      config/overrides/cluster.yaml and set cluster.vip instead.
+      config/clusters/{{ config_cluster }}/cluster.yaml and set cluster.vip instead.
     quiet: true
 
 # --- Deferred structured helpers (ADR-013) ---

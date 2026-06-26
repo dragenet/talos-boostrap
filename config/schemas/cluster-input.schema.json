@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kube1.local/schemas/cluster-input.schema.json",
+  "title": "kube1 cluster input",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "cluster": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "kubernetesVersion": { "type": "string" },
+        "vip": { "type": ["string", "null"] },
+        "endpoint": { "type": "string" },
+        "certSANs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["talos", "kubernetes"],
+          "properties": {
+            "talos": { "type": "array", "items": { "type": "string" } },
+            "kubernetes": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "nodeRoleShort": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["controlplane", "hybrid", "worker"],
+          "properties": {
+            "controlplane": { "type": "string" },
+            "hybrid": { "type": "string" },
+            "worker": { "type": "string" }
+          }
+        }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "enum": ["hcloud", "manual"] }
+      }
+    },
+    "flux": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repoUrl": { "type": "string" },
+        "repoBranch": { "type": "string" },
+        "path": { "type": "string" },
+        "provider": { "type": "string", "enum": ["generic", "github", "bitbucket-server"] },
+        "auth": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": { "type": "string", "enum": ["provider-deploy-key", "https-token", "ssh-private-key"] },
+            "username": { "type": "string" },
+            "owner": { "type": "string" },
+            "repository": { "type": "string" },
+            "hostname": { "type": "string" },
+            "personal": { "type": "boolean" },
+            "private": { "type": "boolean" },
+            "readWriteKey": { "type": "boolean" },
+            "tokenAuthBearer": { "type": "boolean" },
+            "sshHostname": { "type": "string" },
+            "privateKeyFile": { "type": "string" },
+            "caFile": { "type": "string" },
+            "allowInsecureHttp": { "type": "boolean" },
+            "silent": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "talos": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": { "type": "string" },
+        "extensions": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "base": { "type": "array", "items": { "type": "string" } },
+            "extra": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "install": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "disk": { "type": ["string", "null"] },
+            "diskSelector": { "type": ["string", "null"] }
+          }
+        },
+        "network": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "defaultInterface": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "interface": { "type": ["string", "null"] },
+                "deviceSelector": { "type": ["object", "null"] }
+              }
+            }
+          }
+        },
+        "patches": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "all": { "type": "array", "items": { "type": ["string", "object", "array", "number", "boolean", "null"] } },
+            "controlplane": { "type": "array", "items": { "type": ["string", "object", "array", "number", "boolean", "null"] } }
+          }
+        }
+      }
+    },
+    "cni": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "enum": ["cilium", "none"] }
+      }
+    },
+    "cloud_controller_manager": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "anyOf": [
+            { "type": "boolean" },
+            { "type": "string", "enum": ["auto"] }
+          ]
+        }
+      }
+    },
+    "features": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "certManager": { "type": "boolean" },
+        "ingress": { "type": "string", "enum": ["none", "envoy-gateway", "traefik"] },
+        "openebs": { "type": "boolean" },
+        "hcloudCsi": { "type": "boolean" }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "volumes": { "type": "array" }
+      }
+    },
+    "hcloud": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "location": { "type": "string" },
+        "serverTypes": { "type": "array", "items": { "type": "string" } },
+        "serverTypesPerRole": { "type": "object" },
+        "builderServerTypes": { "type": "array", "items": { "type": "string" } },
+        "privateNetworkName": { "type": "string" },
+        "privateNetworkCidr": { "type": "string" },
+        "privateSubnetCidr": { "type": "string" },
+        "firewallName": { "type": "string" },
+        "sshKeyName": { "type": "string" },
+        "firewallOpenAccess": { "type": "boolean" },
+        "adminIps": { "type": "array", "items": { "type": "string" } },
+        "topology": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "controlplane": { "type": "integer", "minimum": 0 },
+            "hybrid": { "type": "integer", "minimum": 0 },
+            "worker": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "serversIpOffset": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

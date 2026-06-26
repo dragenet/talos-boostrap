@@ -1,24 +1,27 @@
 ---
-# Render Talos patch templates/fragments (ADR-013 layered model).
+# Render Talos patch templates/fragments (ADR-016 layered model).
 #
-# Generates ordered patch files under infra/talos/patches/generated/ from the
-# merged cluster.yaml config. The generated files are Jinja templates (.yaml.j2)
-# consumed by the talos_config role at bootstrap time.
+# Composes the final Talos patch stack from ADR-016 sources:
+#   1. config/talos/base/<scope>.yaml           (template-owned base)
+#   2. config/clusters/<cluster>/talos/<scope>.yaml  (user-owned cluster overlay)
+#   3. selected config/talos/components/*.yaml  (feature-gated components)
+#   4. computed integration fragments           (Ansible must compute/enforce these)
+#   5. config/clusters/<cluster>/talos/nodes/*.yaml  (per-node overlays)
+#   6. legacy talos.patches.* raw fragments     (deprecated, kept for compatibility)
 #
-# Output layout:
+# Numeric prefixes encode the layering order (lower = applied first). Later
+# patches win per Talos strategic-merge docs. Computed integration fragments
+# (install image, VIP network, cert SANs) are placed AFTER base/cluster/component
+# overlays so they cannot be overridden by user-written configs.
+#
+# Output layout (consumed by talos_config role):
 #   generated/all/           — applied to all node types (--config-patch)
-#     00-install.yaml.j2     — install image + optional Talos API SANs
-#     10-cloud-provider.yaml.j2 — external cloud provider (hcloud CCM selected)
-#     90-user-raw.yaml.j2    — raw fragments from talos.patches.all (if any)
 #   generated/controlplane/  — applied to control-plane only (--config-patch-control-plane)
-#     00-network.yaml.j2     — VIP on private interface
-#     10-cni-proxy.yaml.j2   — CNI disabled + kube-proxy disabled (if cni.name=cilium)
-#     90-user-raw.yaml.j2    — raw fragments from talos.patches.controlplane (if any)
-#   generated/nodes/         — per-node patches from nodes.yaml (if any)
+#   generated/worker/        — applied to worker-only nodes (--config-patch-worker)
+#   generated/nodes/         — per-node patches (--config-patch <node>)
 #
-# Files are rendered in alphabetical order within each directory; later patches
-# win per Talos docs. The 00/10/90 numbering controls the layering:
-# structured helpers first, user raw fragments last.
+# Empty/comment-only source manifests (base & cluster overlays) are skipped:
+# they produce no effective patch content and would only clutter the tree.
 
 # --- Determine output directory (in-place or temp for check mode) ---
 # config_render_output_base is set by render_ansible.yml (runs before this).
@@ -41,26 +44,176 @@
     state: directory
     mode: "0755"
 
-# --- All-node patches ---
+- name: Ensure generated/worker directory exists
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/worker"
+    state: directory
+    mode: "0755"
 
-- name: Render all-node install patch (00-install.yaml.j2)
+# ===========================================================================
+# ALL-NODE PATCHES (--config-patch)
+# ===========================================================================
+# Order: 05-base → 06-cluster → 10-components → 20-computed-install → 90-user-raw
+
+# --- 20-install: computed integration fragment ---
+# Install image placeholder (resolved at bootstrap time by talos_schematic role)
+# plus optional Talos API certSANs from cluster.certSANs.talos.
+# Placed after 05-base/06-cluster so the computed install image wins
+# over any user overlay that might set machine.install.*.
+
+- name: Render all-node install patch (20-install.yaml.j2)
   ansible.builtin.template:
     src: talos_patches/all/00-install.yaml.j2
-    dest: "{{ config_render_talos_patches_out }}/all/00-install.yaml.j2"
+    dest: "{{ config_render_talos_patches_out }}/all/20-install.yaml.j2"
     mode: "0644"
 
-- name: Render all-node cloud-provider patch (10-cloud-provider.yaml.j2)
-  ansible.builtin.template:
-    src: talos_patches/all/10-cloud-provider.yaml.j2
-    dest: "{{ config_render_talos_patches_out }}/all/10-cloud-provider.yaml.j2"
-    mode: "0644"
-  when: config_render_cluster_external_cloud_provider_enabled | bool
+# --- 05-base: config/talos/base/all.yaml (skip if comment-only) ---
 
-- name: Remove stale cloud-provider patch when external CCM is not selected
+- name: Read base all overlay source
+  ansible.builtin.slurp:
+    src: "{{ config_render_talos_base_dir }}/all.yaml"
+  register: config_render_base_all_raw
+  check_mode: false
+
+# Human-authored source manifest — raw-wrapped so literal {{ }} and {% %} in
+# the Talos-shaped content survive later Jinja templating in talos_config.
+# Computed integration fragments (install, network, cert-sans) remain real templates.
+- name: Copy base all overlay to generated tree (05-base.yaml.j2)
+  ansible.builtin.copy:
+    content: |
+      {{ config_render_header }}
+      # Source: config/talos/base/all.yaml (template-owned, cluster-agnostic)
+      {{ '{% raw %}' }}
+      {{ config_render_base_all_raw.content | b64decode }}
+      {{ '{% endraw %}' }}
+    dest: "{{ config_render_talos_patches_out }}/all/05-base.yaml.j2"
+    mode: "0644"
+  when: >-
+    (config_render_base_all_raw.content | b64decode | from_yaml_all
+     | select('ne', none) | reject('equalto', {}) | list | length > 0)
+
+- name: Remove stale base all overlay when source is empty
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/all/05-base.yaml.j2"
+    state: absent
+  when: >-
+    (config_render_base_all_raw.content | b64decode | from_yaml_all
+     | select('ne', none) | reject('equalto', {}) | list | length == 0)
+
+# --- 06-cluster: config/clusters/<cluster>/talos/all.yaml (skip if comment-only) ---
+# Gracefully handles missing selected-cluster tree (legacy config/overrides/ path).
+
+- name: Stat cluster all overlay source
+  ansible.builtin.stat:
+    path: "{{ config_render_cluster_talos_dir }}/all.yaml"
+  register: config_render_cluster_all_stat
+  check_mode: false
+
+- name: Read cluster all overlay source
+  ansible.builtin.slurp:
+    src: "{{ config_render_cluster_talos_dir }}/all.yaml"
+  register: config_render_cluster_all_raw
+  check_mode: false
+  when: config_render_cluster_all_stat.stat.exists
+
+- name: Set empty cluster all overlay when file missing
+  ansible.builtin.set_fact:
+    config_render_cluster_all_raw:
+      content: ""
+      encoding: base64
+  when: not config_render_cluster_all_stat.stat.exists
+
+- name: Copy cluster all overlay to generated tree (06-cluster.yaml.j2)
+  ansible.builtin.copy:
+    content: |
+      {{ config_render_header }}
+      # Source: config/clusters/{{ config_cluster }}/talos/all.yaml (user-owned)
+      {{ '{% raw %}' }}
+      {{ config_render_cluster_all_raw.content | b64decode }}
+      {{ '{% endraw %}' }}
+    dest: "{{ config_render_talos_patches_out }}/all/06-cluster.yaml.j2"
+    mode: "0644"
+  when: >-
+    (config_render_cluster_all_raw.content | b64decode | from_yaml_all
+     | select('ne', none) | reject('equalto', {}) | list | length > 0)
+
+- name: Remove stale cluster all overlay when source is empty
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/all/06-cluster.yaml.j2"
+    state: absent
+  when: >-
+    (config_render_cluster_all_raw.content | b64decode | from_yaml_all
+     | select('ne', none) | reject('equalto', {}) | list | length == 0)
+
+# --- 10-components: selected config/talos/components/<name>.yaml ---
+# Each selected component is copied verbatim to the generated tree with a
+# stable numeric prefix encoding its position in the component order.
+# Component names are mapped to all-scope or controlplane-scope by the
+# component registry below.
+
+- name: Read external-cloud-provider component source (all scope)
+  ansible.builtin.slurp:
+    src: "{{ config_render_talos_components_dir }}/external-cloud-provider.yaml"
+  register: config_render_comp_ecp_raw
+  check_mode: false
+  when: "'external-cloud-provider' in config_render_talos_components"
+
+- name: Copy external-cloud-provider component to generated all tree
+  ansible.builtin.copy:
+    content: |
+      {{ config_render_header }}
+      # Source: config/talos/components/external-cloud-provider.yaml
+      # Selected by: cloud_controller_manager.enabled + provider.name + cni.name
+      {{ '{% raw %}' }}
+      {{ config_render_comp_ecp_raw.content | b64decode }}
+      {{ '{% endraw %}' }}
+    dest: "{{ config_render_talos_patches_out }}/all/10-external-cloud-provider.yaml.j2"
+    mode: "0644"
+  when: "'external-cloud-provider' in config_render_talos_components"
+
+- name: Remove stale external-cloud-provider component when not selected
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/all/10-external-cloud-provider.yaml.j2"
+    state: absent
+  when: "'external-cloud-provider' not in config_render_talos_components"
+
+# --- Clean up old generated filenames from ADR-013 migration ---
+# These files were rendered by the old templates (all/10-cloud-provider.yaml.j2
+# and controlplane/10-cni-proxy.yaml.j2) replaced by ADR-016 component sources.
+# Remove them unconditionally — they are dead code whether components are
+# selected or not. If a component re-selection is wanted later, the new component
+# file will be re-rendered.
+#
+# Also clean up old prefix filenames (all/00-install.yaml.j2,
+# controlplane/00-network.yaml.j2) that were renamed to keep computed
+# integration fragments after base/cluster overlays (ADR-016 ordering fix).
+
+- name: Remove stale ADR-013 cloud-provider patch (replaced by component)
   ansible.builtin.file:
     path: "{{ config_render_talos_patches_out }}/all/10-cloud-provider.yaml.j2"
     state: absent
-  when: not (config_render_cluster_external_cloud_provider_enabled | bool)
+
+- name: Remove stale ADR-013 CNI/proxy patch (replaced by component + cert-sans)
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/controlplane/10-cni-proxy.yaml.j2"
+    state: absent
+
+- name: Remove stale all-node install patch at old 00 prefix (renamed to 20)
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/all/00-install.yaml.j2"
+    state: absent
+
+# --- Clean up old generated controlplane network filename (ADR-016 prefix reorder) ---
+# The computed network patch was at 00-network, which let base/cluster overlays
+# override it (later patches win). Now at 15-network so computed wins over user
+# overlays. Remove the stale 00 file unconditionally.
+
+- name: Remove stale controlplane network patch at old 00 prefix
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/controlplane/00-network.yaml.j2"
+    state: absent
+
+# --- 90-user-raw: legacy talos.patches.all raw fragments ---
 
 - name: Render all-node user-raw patch (90-user-raw.yaml.j2)
   ansible.builtin.template:
@@ -75,26 +228,205 @@
     state: absent
   when: config_render_merged.talos.patches.all | default([]) | length == 0
 
-# --- Control-plane patches ---
+# ===========================================================================
+# CONTROL-PLANE PATCHES (--config-patch-control-plane)
+# ===========================================================================
+# Order: 05-base → 06-cluster → 10-components → 15-network → 20-cert-sans → 90-user-raw
+# Network patch at 15: after base/cluster/component overlays so the computed VIP
+# wins over any user overlay that might touch the same network interface.
+# Base and cluster overlays must not override the single-source VIP — later
+# patches win per Talos strategic merge.
 
-- name: Render control-plane network patch (00-network.yaml.j2)
+# --- 15-network: computed (VIP on private interface) ---
+
+- name: Render control-plane network patch (15-network.yaml.j2)
   ansible.builtin.template:
     src: talos_patches/controlplane/00-network.yaml.j2
-    dest: "{{ config_render_talos_patches_out }}/controlplane/00-network.yaml.j2"
+    dest: "{{ config_render_talos_patches_out }}/controlplane/15-network.yaml.j2"
     mode: "0644"
 
-- name: Render control-plane CNI/proxy patch (10-cni-proxy.yaml.j2)
-  ansible.builtin.template:
-    src: talos_patches/controlplane/10-cni-proxy.yaml.j2
-    dest: "{{ config_render_talos_patches_out }}/controlplane/10-cni-proxy.yaml.j2"
-    mode: "0644"
-  when: config_render_merged.cni.name == 'cilium'
+# --- 05-base: config/talos/base/controlplane.yaml (skip if comment-only) ---
 
-- name: Remove stale CNI/proxy patch when CNI is not cilium
+- name: Read base controlplane overlay source
+  ansible.builtin.slurp:
+    src: "{{ config_render_talos_base_dir }}/controlplane.yaml"
+  register: config_render_base_cp_raw
+  check_mode: false
+
+- name: Copy base controlplane overlay to generated tree (05-base.yaml.j2)
+  ansible.builtin.copy:
+    content: |
+      {{ config_render_header }}
+      # Source: config/talos/base/controlplane.yaml (template-owned, cluster-agnostic)
+      {{ '{% raw %}' }}
+      {{ config_render_base_cp_raw.content | b64decode }}
+      {{ '{% endraw %}' }}
+    dest: "{{ config_render_talos_patches_out }}/controlplane/05-base.yaml.j2"
+    mode: "0644"
+  when: >-
+    (config_render_base_cp_raw.content | b64decode | from_yaml_all
+     | select('ne', none) | reject('equalto', {}) | list | length > 0)
+
+- name: Remove stale base controlplane overlay when source is empty
   ansible.builtin.file:
-    path: "{{ config_render_talos_patches_out }}/controlplane/10-cni-proxy.yaml.j2"
+    path: "{{ config_render_talos_patches_out }}/controlplane/05-base.yaml.j2"
     state: absent
-  when: config_render_merged.cni.name != 'cilium'
+  when: >-
+    (config_render_base_cp_raw.content | b64decode | from_yaml_all
+     | select('ne', none) | reject('equalto', {}) | list | length == 0)
+
+# --- 06-cluster: config/clusters/<cluster>/talos/controlplane.yaml (skip if comment-only) ---
+# Gracefully handles missing selected-cluster tree (legacy config/overrides/ path).
+
+- name: Stat cluster controlplane overlay source
+  ansible.builtin.stat:
+    path: "{{ config_render_cluster_talos_dir }}/controlplane.yaml"
+  register: config_render_cluster_cp_stat
+  check_mode: false
+
+- name: Read cluster controlplane overlay source
+  ansible.builtin.slurp:
+    src: "{{ config_render_cluster_talos_dir }}/controlplane.yaml"
+  register: config_render_cluster_cp_raw
+  check_mode: false
+  when: config_render_cluster_cp_stat.stat.exists
+
+- name: Set empty cluster controlplane overlay when file missing
+  ansible.builtin.set_fact:
+    config_render_cluster_cp_raw:
+      content: ""
+      encoding: base64
+  when: not config_render_cluster_cp_stat.stat.exists
+
+- name: Copy cluster controlplane overlay to generated tree (06-cluster.yaml.j2)
+  ansible.builtin.copy:
+    content: |
+      {{ config_render_header }}
+      # Source: config/clusters/{{ config_cluster }}/talos/controlplane.yaml (user-owned)
+      {{ '{% raw %}' }}
+      {{ config_render_cluster_cp_raw.content | b64decode }}
+      {{ '{% endraw %}' }}
+    dest: "{{ config_render_talos_patches_out }}/controlplane/06-cluster.yaml.j2"
+    mode: "0644"
+  when: >-
+    (config_render_cluster_cp_raw.content | b64decode | from_yaml_all
+     | select('ne', none) | reject('equalto', {}) | list | length > 0)
+
+- name: Remove stale cluster controlplane overlay when source is empty
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/controlplane/06-cluster.yaml.j2"
+    state: absent
+  when: >-
+    (config_render_cluster_cp_raw.content | b64decode | from_yaml_all
+     | select('ne', none) | reject('equalto', {}) | list | length == 0)
+
+# --- Controlplane network merge-key hazard validation ---
+# The computed 15-network.yaml.j2 patch sets machine.network.interfaces with the
+# VIP on the private interface. If a base or cluster controlplane overlay ALSO
+# sets machine.network.interfaces, Talos merges them by interface name/
+# deviceSelector rather than replacing — both patches take effect, which is
+# almost certainly not what the author intended (they likely expected the overlay
+# to "win" as a later patch). Fail explicitly to prevent this misconfiguration.
+#
+# Validation parses the raw YAML documents with from_yaml_all and walks the
+# machine → network → interfaces attribute chain for every non-empty document.
+# This catches all valid YAML overlay shapes regardless of key ordering,
+# indentation style, comments, or multi-document files. The regex predecessor
+# could miss valid YAML (e.g. inline-flow machine: {network: {interfaces: [...]}})
+# and falsely match comments that happen to contain the key words.
+
+- name: Validate no controlplane overlay sets machine.network.interfaces
+  vars:
+    # Parse raw YAML into structured documents, skipping None and empty-dict
+    # entries (empty or comment-only files produce [None] or [{}]).
+    _cp_base_docs: >-
+      {{ config_render_base_cp_raw.content | b64decode | from_yaml_all
+         | select('ne', none) | reject('equalto', {}) | list }}
+    _cp_cluster_docs: >-
+      {{ config_render_cluster_cp_raw.content | b64decode | from_yaml_all
+         | select('ne', none) | reject('equalto', {}) | list }}
+    # Walk machine → network → interfaces through selectattr/map chains.
+    # selectattr('key', 'defined') works on dict items; map(attribute='key')
+    # extracts the nested dict. If any document reaches the interfaces leaf
+    # (i.e. has machine.network.interfaces set to anything, including an empty
+    # list), the final list is non-empty → the hazard flag is true.
+    _cp_base_has_net_if: >-
+      {{ _cp_base_docs
+         | selectattr('machine', 'defined') | map(attribute='machine')
+         | selectattr('network', 'defined') | map(attribute='network')
+         | selectattr('interfaces', 'defined') | list | length > 0 }}
+    _cp_cluster_has_net_if: >-
+      {{ _cp_cluster_docs
+         | selectattr('machine', 'defined') | map(attribute='machine')
+         | selectattr('network', 'defined') | map(attribute='network')
+         | selectattr('interfaces', 'defined') | list | length > 0 }}
+  ansible.builtin.assert:
+    that:
+      - not _cp_base_has_net_if
+      - not _cp_cluster_has_net_if
+    fail_msg: >-
+      Controlplane overlay merge-key hazard: a controlplane overlay
+      (base/controlplane.yaml or cluster/controlplane.yaml) sets
+      machine.network.interfaces. This conflicts with the computed
+      15-network.yaml.j2 VIP/default-interface patch because Talos
+      merges network interfaces by name/deviceSelector — both patches
+      take effect instead of the computed one "winning". Remove
+      machine.network.interfaces from the controlplane overlay. VIP
+      and default interface selection should be managed exclusively
+      in config/clusters/{{ config_cluster }}/cluster.yaml (cluster.vip +
+      talos.network.defaultInterface). If you intentionally need custom
+      network interface config on controlplane nodes, set
+      talos.network.defaultInterface in cluster.yaml instead.
+
+# --- 10-components: selected config/talos/components/<name>.yaml ---
+# The cilium component (CNI disable + kube-proxy disable) goes to controlplane scope
+# because Talos applies CNI configs cluster-wide through etcd consensus — patching
+# control-plane nodes propagates the settings.
+
+- name: Read cilium component source (controlplane scope)
+  ansible.builtin.slurp:
+    src: "{{ config_render_talos_components_dir }}/cilium.yaml"
+  register: config_render_comp_cilium_raw
+  check_mode: false
+  when: "'cilium' in config_render_talos_components"
+
+- name: Copy cilium component to generated controlplane tree
+  ansible.builtin.copy:
+    content: |
+      {{ config_render_header }}
+      # Source: config/talos/components/cilium.yaml
+      # Selected by: cni.name == 'cilium'
+      {{ '{% raw %}' }}
+      {{ config_render_comp_cilium_raw.content | b64decode }}
+      {{ '{% endraw %}' }}
+    dest: "{{ config_render_talos_patches_out }}/controlplane/10-cilium.yaml.j2"
+    mode: "0644"
+  when: "'cilium' in config_render_talos_components"
+
+- name: Remove stale cilium component when not selected
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/controlplane/10-cilium.yaml.j2"
+    state: absent
+  when: "'cilium' not in config_render_talos_components"
+
+# --- 20-cert-sans: computed (kube-apiserver certSANs, split from old 10-cni-proxy) ---
+# Only rendered when cluster.certSANs.kubernetes is non-empty. The CNI/proxy
+# content that was formerly bundled here moved to config/talos/components/cilium.yaml.
+
+- name: Render control-plane cert SANs patch (20-cert-sans.yaml.j2)
+  ansible.builtin.template:
+    src: talos_patches/controlplane/20-cert-sans.yaml.j2
+    dest: "{{ config_render_talos_patches_out }}/controlplane/20-cert-sans.yaml.j2"
+    mode: "0644"
+  when: config_render_merged.cluster.certSANs.kubernetes | default([]) | length > 0
+
+- name: Remove stale cert SANs patch when no kubernetes certSANs configured
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/controlplane/20-cert-sans.yaml.j2"
+    state: absent
+  when: config_render_merged.cluster.certSANs.kubernetes | default([]) | length == 0
+
+# --- 90-user-raw: legacy talos.patches.controlplane raw fragments ---
 
 - name: Render control-plane user-raw patch (90-user-raw.yaml.j2)
   ansible.builtin.template:
@@ -109,25 +441,168 @@
     state: absent
   when: config_render_merged.talos.patches.controlplane | default([]) | length == 0
 
-# --- Per-node patches from nodes.yaml ---
-# Only generated when nodes.yaml has entries with non-empty patch lists.
-# Each node with patches gets a file: generated/nodes/<node-name>.yaml.j2
+# ===========================================================================
+# WORKER PATCHES (--config-patch-worker)
+# ===========================================================================
+# Order: 05-base → 06-cluster
+# Worker-scope patches affect pure worker nodes only. Hybrid nodes consume
+# the controlplane config (all + controlplane patches) instead, so worker
+# overlays are unused on hybrid-only clusters like kube1. The rendering
+# infrastructure exists so pure-worker nodes added later pick them up.
 
-- name: Compute nodes with raw patches
+# --- 05-base: config/talos/base/worker.yaml (skip if comment-only) ---
+
+- name: Read base worker overlay source
+  ansible.builtin.slurp:
+    src: "{{ config_render_talos_base_dir }}/worker.yaml"
+  register: config_render_base_worker_raw
+  check_mode: false
+
+- name: Copy base worker overlay to generated tree (05-base.yaml.j2)
+  ansible.builtin.copy:
+    content: |
+      {{ config_render_header }}
+      # Source: config/talos/base/worker.yaml (template-owned, cluster-agnostic)
+      {{ '{% raw %}' }}
+      {{ config_render_base_worker_raw.content | b64decode }}
+      {{ '{% endraw %}' }}
+    dest: "{{ config_render_talos_patches_out }}/worker/05-base.yaml.j2"
+    mode: "0644"
+  when: >-
+    (config_render_base_worker_raw.content | b64decode | from_yaml_all
+     | select('ne', none) | reject('equalto', {}) | list | length > 0)
+
+- name: Remove stale base worker overlay when source is empty
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/worker/05-base.yaml.j2"
+    state: absent
+  when: >-
+    (config_render_base_worker_raw.content | b64decode | from_yaml_all
+     | select('ne', none) | reject('equalto', {}) | list | length == 0)
+
+# --- 06-cluster: config/clusters/<cluster>/talos/worker.yaml (skip if comment-only) ---
+# Gracefully handles missing selected-cluster tree (legacy config/overrides/ path).
+
+- name: Stat cluster worker overlay source
+  ansible.builtin.stat:
+    path: "{{ config_render_cluster_talos_dir }}/worker.yaml"
+  register: config_render_cluster_worker_stat
+  check_mode: false
+
+- name: Read cluster worker overlay source
+  ansible.builtin.slurp:
+    src: "{{ config_render_cluster_talos_dir }}/worker.yaml"
+  register: config_render_cluster_worker_raw
+  check_mode: false
+  when: config_render_cluster_worker_stat.stat.exists
+
+- name: Set empty cluster worker overlay when file missing
   ansible.builtin.set_fact:
-    # Select nodes that carry a non-empty raw patch list.
-    # `length` is a filter, not a Jinja test, so selectattr(..., 'length', '>', 0)
-    # raises "No test named 'length'" as soon as any element is tested (it is
-    # silently inert on an empty list, which is why kube1's nodes: [] hid the
-    # bug). Use valid tests instead: keep nodes whose `patch` attribute is
-    # defined, drop None, drop empty lists. The result is a pure function of
-    # the input, so re-runs are deterministic and idempotent.
-    config_render_nodes_with_patches: >-
+    config_render_cluster_worker_raw:
+      content: ""
+      encoding: base64
+  when: not config_render_cluster_worker_stat.stat.exists
+
+- name: Copy cluster worker overlay to generated tree (06-cluster.yaml.j2)
+  ansible.builtin.copy:
+    content: |
+      {{ config_render_header }}
+      # Source: config/clusters/{{ config_cluster }}/talos/worker.yaml (user-owned)
+      {{ '{% raw %}' }}
+      {{ config_render_cluster_worker_raw.content | b64decode }}
+      {{ '{% endraw %}' }}
+    dest: "{{ config_render_talos_patches_out }}/worker/06-cluster.yaml.j2"
+    mode: "0644"
+  when: >-
+    (config_render_cluster_worker_raw.content | b64decode | from_yaml_all
+     | select('ne', none) | reject('equalto', {}) | list | length > 0)
+
+- name: Remove stale cluster worker overlay when source is empty
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/worker/06-cluster.yaml.j2"
+    state: absent
+  when: >-
+     (config_render_cluster_worker_raw.content | b64decode | from_yaml_all
+     | select('ne', none) | reject('equalto', {}) | list | length == 0)
+
+# --- Worker directory sentinel (.gitkeep) ---
+# When both base and cluster worker overlays are comment-only/empty (the common
+# case for hybrid-only clusters like kube1), the worker/ output directory would
+# otherwise have no generated patch files. An empty untracked directory causes
+# check-mode diff drift ("Only in <temp>: .../worker" from diff -ru). Rendering
+# a .gitkeep makes the directory commit-stable so both the committed tree and
+# the temp render output contain the same tracked sentinel — clean-checkout
+# diffs stay clean. Remove the .gitkeep when real worker patches are rendered
+# so stale sentinel files don't accumulate.
+
+- name: Check if worker output directory has generated patches
+  ansible.builtin.find:
+    paths: "{{ config_render_talos_patches_out }}/worker"
+    patterns: "*.yaml.j2"
+    file_type: file
+  register: config_render_worker_files
+  check_mode: false
+
+- name: Render worker .gitkeep when no patches are generated
+  ansible.builtin.copy:
+    content: |
+      {{ config_render_header }}
+      # Placeholder — no worker-scope patches are generated on this cluster
+      # (all nodes are hybrid, or both worker base and cluster overlays are
+      # empty). This .gitkeep keeps the directory commit-stable so
+      # clean-checkout check-mode diffs don't report phantom drift.
+    dest: "{{ config_render_talos_patches_out }}/worker/.gitkeep"
+    mode: "0644"
+  when: config_render_worker_files.files | length == 0
+
+- name: Remove stale .gitkeep when worker patches are generated
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/worker/.gitkeep"
+    state: absent
+  when: config_render_worker_files.files | length > 0
+
+# ===========================================================================
+# PER-NODE PATCHES (--config-patch <node>)
+# ===========================================================================
+# Sources (ADR-016 staged migration):
+#   Primary:   config/clusters/<cluster>/talos/nodes/<node>.yaml (Talos-shaped)
+#   Fallback:  nodes.yaml[].patch (legacy raw fragments, deprecated)
+# Both produce output in generated/nodes/<node>.yaml.j2.
+
+# --- New path: per-node Talos manifests ---
+# Gracefully handles missing selected-cluster tree (legacy config/overrides/ path).
+
+- name: Stat per-node Talos overlay directory
+  ansible.builtin.stat:
+    path: "{{ config_render_cluster_talos_nodes_dir }}"
+  register: config_render_talos_nodes_dir_stat
+  check_mode: false
+
+- name: Discover per-node Talos overlay manifests
+  ansible.builtin.find:
+    paths: "{{ config_render_cluster_talos_nodes_dir }}"
+    patterns: "*.yaml"
+    file_type: file
+    excludes: ".gitkeep"
+  register: config_render_talos_node_sources
+  check_mode: false
+  when: config_render_talos_nodes_dir_stat.stat.exists | default(false)
+
+- name: Set empty per-node sources when directory missing
+  ansible.builtin.set_fact:
+    config_render_talos_node_sources:
+      files: []
+  when: not (config_render_talos_nodes_dir_stat.stat.exists | default(false))
+
+- name: Compute nodes from Talos overlay manifest filenames
+  ansible.builtin.set_fact:
+    config_render_talos_node_names: >-
       {{
-        config_render_nodes_list
-        | selectattr('patch', 'defined')
-        | rejectattr('patch', 'none')
-        | rejectattr('patch', 'equalto', [])
+        config_render_talos_node_sources.files
+        | default([])
+        | map(attribute='path')
+        | map('basename')
+        | map('regex_replace', '.yaml$', '')
         | list
       }}
 
@@ -136,24 +611,69 @@
     path: "{{ config_render_talos_patches_out }}/nodes"
     state: directory
     mode: "0755"
-  when: config_render_nodes_with_patches | length > 0
+  when: >-
+    (config_render_talos_node_sources.files | default([]) | length > 0)
+    or (config_render_nodes_list | default([]) | length > 0)
 
-- name: Render per-node patch files
+- name: Copy per-node Talos overlay manifests to generated tree
   ansible.builtin.copy:
     content: |
       {{ config_render_header }}
+      # Source: config/clusters/{{ config_cluster }}/talos/nodes/{{ item.path | basename }}
+      # Per-node Talos overlay for {{ (item.path | basename | regex_replace('.yaml$', '')) }}.
+      # Applied as --config-patch at apply-config time BEFORE role-required
+      # patches (hostname, nodeLabels, hybrid scheduling). Order is deliberate:
+      # role-required identity patches run last so they win (later patches win
+      # per Talos docs).
+      {{ '{% raw %}' }}
+      {{ lookup('ansible.builtin.file', item.path) }}
+      {{ '{% endraw %}' }}
+    dest: "{{ config_render_talos_patches_out }}/nodes/{{ item.path | basename }}.j2"
+    mode: "0644"
+  loop: "{{ config_render_talos_node_sources.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: config_render_talos_node_sources.files | default([]) | length > 0
+
+# --- Legacy fallback: nodes.yaml[].patch raw fragments ---
+
+- name: Compute nodes with raw patches (legacy fallback)
+  ansible.builtin.set_fact:
+    config_render_nodes_with_patches: >-
+      {{
+        config_render_nodes_list
+        | selectattr('patch', 'defined')
+        | rejectattr('patch', 'none')
+        | rejectattr('patch', 'equalto', [])
+        | rejectattr('name', 'in', config_render_talos_node_names | default([]))
+        | list
+      }}
+  # Nodes that already have a Talos overlay manifest in
+  # config/clusters/<cluster>/talos/nodes/<name>.yaml are excluded from legacy
+  # rendering — the new overlay wins per ADR-016 staged migration. The legacy
+  # fallback only renders nodes that have NO corresponding Talos overlay file.
+
+- name: Render legacy per-node patch files
+  ansible.builtin.copy:
+    content: |
+      {{ config_render_header }}
+      {{ '{% raw %}' }}
       ---
       # Layer 2 raw fragments: per-node patches for {{ item.name }}.
-      # Source: nodes.yaml (nodes[?name == '{{ item.name }}'].patch)
+      # Source: nodes.yaml (nodes[?name == '{{ item.name }}'].patch) — DEPRECATED.
+      # Migrate this content to config/clusters/{{ config_cluster }}/talos/nodes/{{ item.name }}.yaml
+      # as a Talos-shaped machine config patch manifest (ADR-016).
       #
       # Applied as --config-patch at apply-config time BEFORE role-required
       # patches (hostname, nodeLabels, hybrid scheduling). Order is deliberate:
       # role-required identity patches run last so they win (later patches win
       # per Talos docs) and user raw fragments cannot accidentally erase
       # hostname/role labels.
-      {% for fragment in item.patch %}
+      {% set raw_fragments = item.patch if (item.patch is iterable and item.patch is not string and item.patch is not mapping) else [item.patch] %}
+      {% for fragment in raw_fragments %}
       {{ fragment }}
       {% endfor %}
+      {{ '{% endraw %}' }}
     dest: "{{ config_render_talos_patches_out }}/nodes/{{ item.name }}.yaml.j2"
     mode: "0644"
   loop: "{{ config_render_nodes_with_patches }}"
@@ -162,6 +682,8 @@
   when: config_render_nodes_with_patches | length > 0
 
 # --- Clean up stale per-node patch files ---
+# Remove generated node patches whose source no longer exists (neither
+# as a Talos overlay manifest nor as a legacy nodes.yaml entry).
 
 - name: Check if nodes directory exists
   ansible.builtin.stat:
@@ -176,6 +698,14 @@
   register: config_render_existing_node_patches
   when: config_render_nodes_dir_stat.stat.exists
 
+- name: Compute known node names (new Talos overlays + legacy patches)
+  ansible.builtin.set_fact:
+    config_render_known_node_names: >-
+      {{
+        (config_render_talos_node_names | default([]))
+        + (config_render_nodes_with_patches | default([]) | map(attribute='name') | list)
+      }}
+
 - name: Remove stale per-node patch files
   ansible.builtin.file:
     path: "{{ item.path }}"
@@ -186,4 +716,4 @@
   when:
     - config_render_existing_node_patches.files is defined
     - (item.path | basename | regex_replace('.yaml.j2$', ''))
-      not in (config_render_nodes_with_patches | map(attribute='name') | list)
+      not in config_render_known_node_names

@@ -1,0 +1,10 @@
+---
+# config/talos/base/worker.yaml — TEMPLATE-OWNED Talos base patch for worker
+# nodes (no etcd). Cluster-agnostic.
+#
+# Currently empty — add patches here for worker-specific settings that apply
+# to every cluster built from this template.
+#
+# ADR-016: this is a Talos-shaped machine config patch manifest, applied via
+# --config-patch-worker. The render compiler composes it into the generated
+# patch stack before cluster overlays and components.

@@ -1,0 +1,8 @@
+---
+# config/clusters/kube1/talos/worker.yaml — USER-OWNED kube1 Talos overlay for
+# worker nodes (no etcd).
+#
+# Add kube1-specific Talos patches for worker nodes here. These are Talos-shaped
+# machine config patch manifests (ADR-016).
+#
+# Currently empty — kube1 uses only hybrid nodes (no pure workers).

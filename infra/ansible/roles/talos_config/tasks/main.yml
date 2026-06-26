@@ -2,12 +2,15 @@
 # Tasks: generate machine configs per node role, apply to each node,
 # bootstrap etcd, wait for health, converge installer image.
 #
-# Patch model (ADR-013 layered):
-#   1. Discover ordered .yaml.j2 templates in generated/all/ and generated/controlplane/
+# Patch model (ADR-016 boundary, ADR-013 compatibility tree):
+#   1. Discover ordered .yaml.j2 templates in generated/{all,controlplane,worker,nodes}/
 #   2. Render each template to rendered-patches/ inside secrets dir
-#   3. Pass them as --config-patch / --config-patch-control-plane to talosctl gen config
+#   3. Pass them as --config-patch / --config-patch-control-plane /
+#      --config-patch-worker to talosctl gen config
 #   4. Per-node customisation (hostname, nodeLabels, hybrid scheduling) applied at
 #      apply-config time via inline --config-patch (unchanged from pre-refactor).
+#   5. Worker-scope patches affect pure worker nodes only; hybrid nodes consume
+#      the controlplane config (all + controlplane patches).
 
 - name: Ensure Talos secrets directory exists
   ansible.builtin.file:
@@ -23,7 +26,7 @@
 
 # --- Discover generated patch templates ---
 # Alphabetical order within each directory; later patches win per Talos docs.
-# The 00/10/90 numbering controls layering: structured helpers first, user raw last.
+# The 05/06/10/15/20/90 numbering controls layering: base/cluster overlays first, then components, then computed integration, then user raw last.
 
 - name: Discover generated all-node patch templates
   ansible.builtin.find:
@@ -38,6 +41,13 @@
     patterns: "*.yaml.j2"
     file_type: file
   register: talos_config_discovered_cp_patches
+
+- name: Discover generated worker patch templates
+  ansible.builtin.find:
+    paths: "{{ talos_config_generated_worker_dir }}"
+    patterns: "*.yaml.j2"
+    file_type: file
+  register: talos_config_discovered_worker_patches
 
 # --- Render discovered templates ---
 # Each .yaml.j2 is rendered to rendered-patches/ with a scope prefix for clarity.
@@ -58,6 +68,15 @@
     dest: "{{ talos_config_rendered_patches_dir }}/cp-{{ item.path | basename | regex_replace('.j2$', '') }}"
     mode: "0600"
   loop: "{{ talos_config_discovered_cp_patches.files | sort(attribute='path') }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+
+- name: Render worker patches to secrets dir
+  ansible.builtin.template:
+    src: "{{ item.path }}"
+    dest: "{{ talos_config_rendered_patches_dir }}/worker-{{ item.path | basename | regex_replace('.j2$', '') }}"
+    mode: "0600"
+  loop: "{{ talos_config_discovered_worker_patches.files | sort(attribute='path') }}"
   loop_control:
     label: "{{ item.path | basename }}"
 
@@ -110,8 +129,9 @@
   when: talos_config_discovered_node_patches.files is defined and talos_config_discovered_node_patches.files | length > 0
 
 # --- Build talosctl gen config command ---
-# Start with the base command, then append --config-patch and
-# --config-patch-control-plane flags in discovery order.
+# Start with the base command, then append --config-patch,
+# --config-patch-control-plane, and --config-patch-worker flags
+# in discovery order. Later flags override earlier ones per-strategic-merge.
 
 - name: Build base gen-config argv
   ansible.builtin.set_fact:
@@ -148,6 +168,16 @@
   loop_control:
     label: "{{ item.path | basename }}"
 
+- name: Append worker --config-patch-worker flags
+  ansible.builtin.set_fact:
+    talos_config_gen_argv: >-
+      {{ talos_config_gen_argv +
+         ['--config-patch-worker',
+          '@' ~ talos_config_rendered_patches_dir ~ '/worker-' ~ (item.path | basename | regex_replace('.j2$', ''))] }}
+  loop: "{{ talos_config_discovered_worker_patches.files | sort(attribute='path') }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+
 - name: Generate Talos secrets bundle
   ansible.builtin.command:
     argv:
@@ -161,7 +191,7 @@
 # --- Regeneration tracking ---
 # talosctl gen config uses creates: controlplane.yaml to skip when configs
 # already exist. That makes generated patch changes stale on re-runs — editing
-# config/overrides and re-rendering patches has no effect until the operator
+# config/clusters/<cluster>/ and re-rendering patches has no effect until the operator
 # manually deletes controlplane.yaml. We track a SHA-256 signature of the gen
 # inputs (rendered patch file checksums + the full gen argv, which captures
 # cluster name, endpoint, kubernetes version, and the ordered patch set) in a
@@ -182,7 +212,7 @@
 - name: Build rendered patch file paths for regeneration signature
   ansible.builtin.set_fact:
     # Map each discovered source template to its rendered output path under
-    # rendered-patches/, using the same all-/cp-/node- prefixes the render
+    # rendered-patches/, using the same all-/cp-/worker-/node- prefixes the render
     # tasks above write. The list is sorted for deterministic ordering.
     talos_config_rendered_patch_paths: >-
       {%- set paths = [] -%}
@@ -191,6 +221,9 @@
       {%- endfor -%}
       {%- for f in talos_config_discovered_cp_patches.files | default([]) -%}
         {%- set _ = paths.append(talos_config_rendered_patches_dir ~ '/cp-' ~ (f.path | basename | regex_replace('.j2$', ''))) -%}
+      {%- endfor -%}
+      {%- for f in talos_config_discovered_worker_patches.files | default([]) -%}
+        {%- set _ = paths.append(talos_config_rendered_patches_dir ~ '/worker-' ~ (f.path | basename | regex_replace('.j2$', ''))) -%}
       {%- endfor -%}
       {%- for f in talos_config_discovered_node_patches.files | default([]) -%}
         {%- set _ = paths.append(talos_config_rendered_patches_dir ~ '/node-' ~ (f.path | basename | regex_replace('.j2$', ''))) -%}
@@ -252,13 +285,20 @@
   when: talos_config_needs_regen
 
 # Generates controlplane.yaml, worker.yaml, and talosconfig into secrets_dir.
-# Patch ordering (all-node first, then control-plane; alphabetical within each):
-#   all/00-install.yaml.j2           → machine.install.image (+ optional Talos certSANs)
-#   all/10-cloud-provider.yaml.j2    → external cloud provider (hcloud CCM selected)
-#   all/90-user-raw.yaml.j2          → raw talos.patches.all fragments (if any)
-#   controlplane/00-network.yaml.j2  → VIP on private interface
-#   controlplane/10-cni-proxy.yaml.j2 → CNI none + proxy disabled (+ optional k8s certSANs)
-#   controlplane/90-user-raw.yaml.j2  → raw talos.patches.controlplane fragments (if any)
+# Patch ordering (all-node first, then control-plane, then worker; alphabetical
+# within each scope. Later scopes override earlier ones):
+#   all/05-base.yaml.j2                     → config/talos/base/all.yaml (template-owned)
+#   all/06-cluster.yaml.j2                  → config/clusters/<cluster>/talos/all.yaml (user-owned)
+#   all/10-external-cloud-provider.yaml.j2  → external cloud provider (hcloud CCM selected)
+#   all/20-install.yaml.j2                  → machine.install.image (+ optional Talos certSANs)
+#   all/90-user-raw.yaml.j2                 → raw talos.patches.all fragments (if any)
+#   controlplane/05-base.yaml.j2            → config/talos/base/controlplane.yaml (template-owned)
+#   controlplane/06-cluster.yaml.j2         → config/clusters/<cluster>/talos/controlplane.yaml (user-owned)
+#   controlplane/10-cilium.yaml.j2          → CNI none + proxy disabled (cilium component)
+#   controlplane/15-network.yaml.j2         → VIP on private interface
+#   controlplane/20-cert-sans.yaml.j2       → kube-apiserver certSANs (if configured)
+#   controlplane/90-user-raw.yaml.j2        → raw talos.patches.controlplane fragments (if any)
+#   worker/...                              → worker-scope patches (future: node selectors, etc.)
 #
 # Per-node customisation (hostname, nodeLabels, allowSchedulingOnControlPlanes)
 # is applied at apply-config time via --config-patch so each node gets its own.
@@ -345,7 +385,11 @@
 #
 # These are role-required identity patches — they run AFTER any per-node raw
 # patches from nodes.yaml (if present) so that hostname/role labels are never
-# accidentally erased by user fragments.
+# accidentally erased by user fragments. This ordering is intentional: user
+# per-node overlays can customise their node but must not override the
+# cluster-enforced identity (hostname, node labels, hybrid scheduling).
+# Per-node worker overlays (future: from config/clusters/kube1/talos/nodes/)
+# follow the same rule — they apply before these identity patches.
 - name: Apply machine config to nodes in maintenance mode
   ansible.builtin.command:
     argv: >-

@@ -1,13 +1,15 @@
 ---
+# yaml-language-server: $schema=../schemas/cluster-input.schema.json
 # config/defaults/cluster.yaml — TEMPLATE-OWNED defaults.
 #
 # This file contains sensible provider-agnostic defaults for any cluster built
 # from this template. Users never edit this file — cluster-specific choices go
-# in config/overrides/cluster.yaml. The render deep-merges defaults with
-# overrides (overrides win per-key) to produce the effective configuration.
+# in config/clusters/<cluster>/cluster.yaml (ADR-016 selected-cluster source of
+# truth). The render deep-merges defaults with the selected-cluster config
+# (selected-cluster wins per-key) to produce the effective configuration.
 #
 # Template updates land here; pulling upstream improvements is conflict-free
-# against user-owned overrides (ADR-011).
+# against user-owned cluster configs (ADR-016).
 
 cluster:
   # Cluster identity — override per deployment.
@@ -149,11 +151,10 @@ cni:
 # with --cloud-provider=external (the CCM clears the uninitialized taint and sets
 # providerID/topology labels).
 #
-# ⚠️  The CCM pre-Flux INSTALLER (flux_bootstrap role `hcloud-ccm` step) is
-# deferred to a later feature slice (plan 2026-06-22-cilium-ccm-csi). Enabling CCM
-# before the installer lands would taint nodes with no CCM to clear them — the
-# kube1 overrides explicitly set enabled: false (overriding the template auto
-# default) until that slice ships.
+# The CCM pre-Flux installer (flux_bootstrap role `hcloud-ccm` step) is implemented
+# and running. The template default is auto, which resolves to true for providers
+# with a supported CCM (hcloud), false otherwise. Clusters may override this
+# per-need (e.g. enabled: false for bare-metal/manual).
 # Graduated from features.hcloudCcm (config schema migration, June 2026).
 cloud_controller_manager:
   enabled: auto
