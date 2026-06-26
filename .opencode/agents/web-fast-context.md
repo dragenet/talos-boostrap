@@ -3,12 +3,7 @@ description: Fast read-only web and official-docs context agent; use in parallel
 mode: subagent
 model: opencode-go/deepseek-v4-flash
 permission:
-  edit: deny
-  read: deny
-  glob: deny
-  grep: deny
-  bash: deny
-  task: deny
+  *: deny
   webfetch: allow
   websearch: allow
   skill: allow

@@ -1,7 +1,7 @@
 ---
 description: Reviews kube1 Flux and Kubernetes changes for correctness, ordering, pinning, and operational safety without editing files.
 mode: subagent
-model: openai/gpt-5.5
+model: anthropic/claude-sonnet-4-6
 variant: high
 permission:
   read: allow

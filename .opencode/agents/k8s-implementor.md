@@ -1,7 +1,7 @@
 ---
 description: Implements kube1 Flux, Kustomize, Helm, and Kubernetes manifest changes under flux/.
 mode: subagent
-model: opencode-go/deppseek-v4-pro
+model: opencode-go/deepseek-v4-pro
 variant: low
 permission:
   read: allow
