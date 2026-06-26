@@ -1,0 +1,7 @@
+# Shared base for apps — currently empty.
+# This is the template/shared layer: populate with workload HelmRelease manifests
+# shared across clusters.
+# Owned by: template catalog (human-authored, not generated).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: []

@@ -1,3 +1,6 @@
+# User-owned overlay — references the per-cluster apps overlay chain.
+# See ADR-017 for the four-tier overlay ownership model.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-resources: []
+resources:
+  - overlays/clusters/kube1

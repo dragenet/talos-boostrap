@@ -1,0 +1,7 @@
+# Shared base for infrastructure configs — currently empty.
+# This is the template/shared layer: populate with ClusterIssuers, StorageClasses,
+# and other cluster-agnostic config resources as features are enabled.
+# Owned by: template catalog (human-authored, not generated).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: []

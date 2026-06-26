@@ -1,0 +1,8 @@
+# Repo-wide overlay for controllers — add common patches, replacements, or
+# shared resources here. References the render-owned generated/selected layer
+# which lists enabled _components/ entries from the catalog.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../generated/selected
+# Use patches/ or replacements/ here for repo-wide customizations.

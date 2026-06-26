@@ -1,47 +1,44 @@
 ---
-# Render Flux base kustomization from the merged cluster.yaml features and
-# provider selection (ADR-010, ADR-012).
+# Render Flux generated/selected kustomization from the merged cluster.yaml
+# features and provider selection (ADR-010, ADR-012, ADR-017).
 #
 # Maps component names in config_render_bootstrap_pre_flux_components (computed
-# by compute.yml) to catalog paths under _components/. The base kustomization is
-# the render-owned half of the catalog / base / overlay split; the top-level
-# kustomization.yaml in ../ is user-owned and references base/ as a resource.
+# by compute.yml) to catalog paths under _components/. The generated/selected/
+# kustomization is the render-owned layer in the three-tier overlay model
+# (ADR-017); the top-level controllers/kustomization.yaml references it through
+# overlays/clusters/{{ config_cluster }} → overlays/common → generated/selected.
 #
-# Catalog path contract:
-#   cilium     → ../_components/cilium
-#   hcloud-ccm → ../_components/providers/hcloud/ccm
+# Catalog path contract (from generated/selected/, _components/ is ../../):
+#   cilium     → ../../_components/cilium
+#   hcloud-ccm → ../../_components/providers/hcloud/ccm
 #
 # For the empty set (cni.name=none and CCM disabled), resources: [] is emitted
 # explicitly rather than YAML null so Kustomize and callers can iterate without
 # a NoneType guard.
 
 # --- Map component names to catalog paths ---
-
-- name: Compute Flux base resource paths
-  ansible.builtin.set_fact:
-    config_render_flux_base_resources: >-
-      {{
-        (['../_components/cilium'] if 'cilium' in config_render_bootstrap_pre_flux_components else [])
-        + (['../_components/providers/hcloud/ccm'] if 'hcloud-ccm' in config_render_bootstrap_pre_flux_components else [])
-      }}
-
-# --- Determine output directory (in-place or temp for check mode) ---
 # config_render_output_base is set by render_ansible.yml (runs before this).
 
-- name: Set Flux controllers base output directory
+- name: Compute Flux selected resource paths
   ansible.builtin.set_fact:
-    config_render_flux_base_dir: "{{ config_render_output_base }}/flux/infrastructure/controllers/base"
+    config_render_flux_selected_resources: >-
+      {{
+        (['../../_components/cilium'] if 'cilium' in config_render_bootstrap_pre_flux_components else [])
+        + (['../../_components/providers/hcloud/ccm'] if 'hcloud-ccm' in config_render_bootstrap_pre_flux_components else [])
+      }}
 
-# --- Render base kustomization ---
+- name: Set Flux controllers selected output directory
+  ansible.builtin.set_fact:
+    config_render_flux_selected_dir: "{{ config_render_output_base }}/flux/infrastructure/controllers/generated/selected"
 
-- name: Ensure Flux controllers base directory exists
+- name: Ensure Flux controllers selected directory exists
   ansible.builtin.file:
-    path: "{{ config_render_flux_base_dir }}"
+    path: "{{ config_render_flux_selected_dir }}"
     state: directory
     mode: "0755"
 
-- name: Render Flux controllers base kustomization
+- name: Render Flux controllers selected kustomization
   ansible.builtin.template:
-    src: flux/base/kustomization.yaml.j2
-    dest: "{{ config_render_flux_base_dir }}/kustomization.yaml"
+    src: flux/selected/kustomization.yaml.j2
+    dest: "{{ config_render_flux_selected_dir }}/kustomization.yaml"
     mode: "0644"

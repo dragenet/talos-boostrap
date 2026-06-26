@@ -1,0 +1,13 @@
+{{ config_render_header }}
+# This kustomization is render-owned — it lists the enabled catalog entries from
+# _components/ based on cluster.yaml features and provider selection.
+# This is the generated/selected layer of the four-tier overlay model
+# (ADR-017). Do not edit manually.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+{% if config_render_flux_selected_resources | length > 0 %}
+resources:
+  - {{ config_render_flux_selected_resources | join("\n  - ") }}
+{% else %}
+resources: []
+{% endif %}

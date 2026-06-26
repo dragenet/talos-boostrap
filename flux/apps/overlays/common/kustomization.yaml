@@ -1,0 +1,7 @@
+# Repo-wide overlay for apps — repo/user preferences applied to every cluster.
+# This is the common/user-global overlay layer (ADR-017).
+# Add patches or replacements here for shared workload customizations.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base

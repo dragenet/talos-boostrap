@@ -49,21 +49,11 @@ config_render_output_manual: "{{ config_render_repo_root }}/infra/ansible/invent
 # optional per-node directories.
 config_render_output_talos_patches: "{{ config_render_repo_root }}/infra/talos/patches/generated"
 
-# Generated Flux controllers output paths (render-owned, ADR-010/012/017).
-# Two paths during ADR-017 staged migration:
-#   base/                   — LEGACY (deprecated), kept for backward compatibility.
-#                             The render compiler populates it with the same selected
-#                             catalog entries as generated/selected/.
-#                             Will be removed in a cleanup phase after the per-cluster
-#                             overlay switch (Phase 4-5 of ADR-017 migration).
-#   generated/selected/     — New render-owned selected set (ADR-017 explicit ownership).
-#                             The render compiler populates exclusively the catalog
-#                             entries enabled by cluster.yaml feature flags and
-#                             provider selection. Edit config/overrides/cluster.yaml
-#                             to change component enablement, then re-render with
-#                             `ansible-playbook playbooks/render-config.yml`.
-config_render_output_flux_base: "{{ config_render_repo_root }}/flux/infrastructure/controllers/base"
-config_render_output_flux_controllers_selected: "{{ config_render_repo_root }}/flux/infrastructure/controllers/generated/selected"
+# Generated Flux selected output path (render-owned, ADR-017 four-tier overlay).
+# The generated/selected/ kustomization.yaml is render-owned: the render compiler
+# populates it with enabled catalog entries from _components/ based on
+# cluster.yaml features and provider selection.
+config_render_output_flux_selected: "{{ config_render_repo_root }}/flux/infrastructure/controllers/generated/selected"
 
 # Check/drift mode: when true, render to a temp directory and diff against
 # committed generated files instead of writing in-place.
