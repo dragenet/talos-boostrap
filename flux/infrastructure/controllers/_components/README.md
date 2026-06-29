@@ -21,6 +21,19 @@ subdirectory is an ordinary kustomize base that can be referenced from
   listed under `components:` in `../generated/selected/kustomization.yaml`. That is not the
   default for controllers.
 
+## Namespace conventions
+
+Two conventions coexist depending on component type:
+
+| Component type | Namespace pattern | Examples |
+|---|---|---|
+| Non-CSI infra (CNI, CCM) | `<name>-system` | `cilium-system`, `hcloud-ccm-system` |
+| CSI storage drivers | `csi-<name>-system` | `csi-openebs-system`, future `csi-hcloud-system` |
+
+The `csi-<name>-system` convention groups all storage CSI drivers by purpose,
+making it clear which namespaces provide storage rather than networking or
+cloud-controller functions.
+
 ## Directory structure
 
 ```
@@ -43,10 +56,16 @@ HelmRelease base, chart versions pinned, ready for Flux adoption):
 
 - `cilium/` — Cilium CNI (kube-proxy replacement, VXLAN tunnel; chart 1.19.5).
 - `providers/hcloud/ccm/` — Hetzner Cloud Controller Manager (chart 1.33.0).
+- `openebs/` — OpenEBS LVM LocalPV CSI driver (chart `lvm-localpv` 1.9.1).
+  Purely Flux-managed (no pre-Flux Ansible install). Injects a privileged
+  VG-provisioning init container via HelmRelease `spec.postRenderers` to
+  create the LVM volume group on the Talos RawVolumeConfig partition
+  (`/dev/disk/by-partlabel/r-openebs-lvm`). Namespace `csi-openebs-system`
+  per the CSI-driver naming convention.
 
 The render compiler references the enabled entries from
 `../generated/selected/kustomization.yaml` (render-owned). Future entries
-(hcloud CSI, cert-manager, OpenEBS, ingress) follow the same pattern and are
+(hcloud CSI, cert-manager, ingress) follow the same pattern and are
 added by flipping the matching `features.*` flag in the selected-cluster
 config and re-rendering.
 

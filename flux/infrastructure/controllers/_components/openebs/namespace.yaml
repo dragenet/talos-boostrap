@@ -1,0 +1,15 @@
+---
+# Namespace for OpenEBS LVM LocalPV CSI driver.
+#
+# Convention (NEW): CSI drivers use a csi-<name>-system namespace to group
+# all storage CSI by purpose
+# (e.g. csi-openebs-system, future csi-hcloud-system).
+# This replaces the earlier dedicated-<component>-system convention used by
+# cilium-system and hcloud-ccm-system, which are NOT CSI drivers.
+#
+# This is a purely Flux-managed component (no pre-Flux Ansible install,
+# no adoption handshake). Flux creates and owns this namespace.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: csi-openebs-system

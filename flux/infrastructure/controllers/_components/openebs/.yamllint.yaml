@@ -1,0 +1,10 @@
+---
+# Relaxed line-length for the OpenEBS component: the HelmRelease
+# postRenderer patch contains an embedded shell script deeply nested
+# under YAML (command: | block at ~29 spaces indent). The shortest
+# readable form of the idempotent VG-provisioning script requires
+# 120 columns. All other yamllint rules use the default strict config.
+extends: default
+rules:
+  line-length:
+    max: 120

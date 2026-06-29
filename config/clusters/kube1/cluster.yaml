@@ -133,14 +133,32 @@ cloud_controller_manager:
 features:
   certManager: true
   ingress: envoy-gateway
-  openebs: false
+  openebs: true
   hcloudCsi: false
 
 ingress:
   gatewayApiChannel: standard
 
 storage:
-  volumes: []
+  # A single raw volume carved from free space on the boot/system disk.
+  # 20GB fixed-size partition (no grow): Talos OS + ephemeral occupies ~60GB
+  # on an 80GB CX33 NVMe, leaving ~20GB headroom for OS upgrades and logs
+  # before the 20GB raw volume boundary.
+  #
+  # openebs: true marks this volume as the OpenEBS LocalLV LVM VG backing device.
+  # The vgName is a Flux-side concern — hardcoded as openebs-vg in the catalog
+  # StorageClass and the node-DaemonSet init-container (ADR-009 addendum + §1a #4).
+  #
+  # No LUKS — Talos v1.13 RawVolumeConfig+LUKS has an unresolved shutdown/upgrade
+  # deadlock (talos#13354). The schema structurally rejects any encryption key
+  # via additionalProperties: false on the volume item.
+  volumes:
+    - name: openebs-lvm
+      type: raw
+      diskSelector: system_disk
+      minSize: 20GB
+      maxSize: 20GB
+      openebs: true
 
 hcloud:
   location: nbg1

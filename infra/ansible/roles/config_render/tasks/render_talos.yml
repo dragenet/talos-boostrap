@@ -53,7 +53,7 @@
 # ===========================================================================
 # ALL-NODE PATCHES (--config-patch)
 # ===========================================================================
-# Order: 05-base → 06-cluster → 10-components → 20-computed-install → 90-user-raw
+# Order: 05-base → 06-cluster → 10-components → 20-computed-install → 25-kernel-modules → 30-raw-volumes → 90-user-raw
 
 # --- 20-install: computed integration fragment ---
 # Install image placeholder (resolved at bootstrap time by talos_schematic role)
@@ -66,6 +66,42 @@
     src: talos_patches/all/00-install.yaml.j2
     dest: "{{ config_render_talos_patches_out }}/all/20-install.yaml.j2"
     mode: "0644"
+
+# --- 25-kernel-modules: computed (device-mapper modules for OpenEBS) ---
+# Real template (computed fragment, not raw-wrapped). Emits
+# machine.kernel.modules with dm_mod, dm_snapshot, dm_thin_pool.
+# Gated on config_render_openebs_enabled — state: absent when disabled.
+
+- name: Render all-node kernel modules patch (25-kernel-modules.yaml.j2)
+  ansible.builtin.template:
+    src: talos_patches/all/25-kernel-modules.yaml.j2
+    dest: "{{ config_render_talos_patches_out }}/all/25-kernel-modules.yaml.j2"
+    mode: "0644"
+  when: config_render_openebs_enabled | bool
+
+- name: Remove stale kernel modules patch when openebs is disabled
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/all/25-kernel-modules.yaml.j2"
+    state: absent
+  when: not (config_render_openebs_enabled | bool)
+
+# --- 30-raw-volumes: computed (RawVolumeConfig per storage.volumes entry) ---
+# Real template (computed fragment). Emits one RawVolumeConfig document per
+# storage.volumes entry with type == 'raw'. Multi-doc, --- separated.
+# Gated on config_render_openebs_enabled — state: absent when disabled.
+
+- name: Render all-node raw volumes patch (30-raw-volumes.yaml.j2)
+  ansible.builtin.template:
+    src: talos_patches/all/30-raw-volumes.yaml.j2
+    dest: "{{ config_render_talos_patches_out }}/all/30-raw-volumes.yaml.j2"
+    mode: "0644"
+  when: config_render_openebs_enabled | bool
+
+- name: Remove stale raw volumes patch when openebs is disabled
+  ansible.builtin.file:
+    path: "{{ config_render_talos_patches_out }}/all/30-raw-volumes.yaml.j2"
+    state: absent
+  when: not (config_render_openebs_enabled | bool)
 
 # --- 05-base: config/talos/base/all.yaml (skip if comment-only) ---
 

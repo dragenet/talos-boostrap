@@ -1,0 +1,25 @@
+---
+# StorageClass for OpenEBS LVM LocalPV with thin provisioning.
+#
+# volgroup MUST equal the vgName used by the init-container vgcreate
+# in the HelmRelease postRenderer (openebs-vg). This is the single
+# Flux-side coupling point — both the StorageClass and the init
+# container hardcode the same vgName. Users override via a Flux
+# overlay on the StorageClass and the HelmRelease values.
+#
+# volumeBindingMode: WaitForFirstConsumer — volumes are provisioned
+# on the node where the pod is scheduled, matching the local-LVM
+# topology model (ADR-009).
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: openebs-lvm-localpv
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: local.csi.openebs.io
+parameters:
+  storage: "lvm"
+  volgroup: "openebs-vg"
+  thinProvision: "yes"
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true

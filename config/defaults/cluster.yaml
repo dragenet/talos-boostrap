@@ -174,7 +174,11 @@ features:
 ingress:
   gatewayApiChannel: standard
 
-# Storage volume definitions (ADR-013). User-owned list — replaces defaults.
+# Storage volume definitions (ADR-013). User-owned list replaces defaults.
+# Each item has a structured schema (config/schemas/cluster-input.schema.json):
+# { name, type, diskSelector, minSize, maxSize, openebs? }.
+# The schema enforces additionalProperties: false — any LUKS/encryption key
+# is structurally rejected (talos#13354 LUKS+LVM shutdown/upgrade deadlock).
 storage:
   volumes: []
 

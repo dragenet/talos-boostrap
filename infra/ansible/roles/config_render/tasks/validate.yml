@@ -248,17 +248,129 @@
       talos.patches.all instead.
     quiet: true
 
-- name: Reject storage.volumes (deferred — not yet rendered)
+# --- storage.volumes structured validation (ADR-013, ADR-009 addendum) ---
+# Replaces the old deferred-guard with real validation against the structured
+# item schema (config/schemas/cluster-input.schema.json). Each volume must have
+# a Talos-valid name, type == 'raw', non-empty minSize/maxSize, and must NOT
+# carry LUKS/encryption keys (talos#13354 deadlock). The ADR-013 openebs ⇒ raw
+# rule asserts exactly one raw backing volume when features.openebs is true.
+
+- name: Validate each storage.volumes entry name matches Talos pattern
   ansible.builtin.assert:
     that:
-      - config_render_merged.storage.volumes | default([]) | length == 0
+      - item.name is match('^[A-Za-z0-9-]{1,34}$')
     fail_msg: >-
-      storage.volumes is a deferred structured helper (ADR-013): the render
-      compiler does not yet emit Talos volume configs from it, and OpenEBS
-      LocalLV wiring is deferred (ADR-009). Setting it has no effect. Leave it
-      empty or supply raw volume fragments via talos.patches.all (or
-      nodes[].patch for per-node devices) instead.
+      storage.volumes[{{ _sv_idx }}].name '{{ item.name }}' is invalid.
+      Talos volume names must be 1–34 chars, ASCII letters/digits/hyphens only.
     quiet: true
+  loop: "{{ config_render_merged.storage.volumes | default([]) }}"
+  loop_control:
+    index_var: _sv_idx
+    label: "{{ item.name | default('(unnamed)') }}"
+  when: config_render_merged.storage.volumes | default([]) | length > 0
+
+- name: Validate storage.volumes names are unique
+  ansible.builtin.assert:
+    that:
+      - >-
+        (config_render_merged.storage.volumes | default([]) | map(attribute='name') | list | length)
+        == (config_render_merged.storage.volumes | default([]) | map(attribute='name') | unique | list | length)
+    fail_msg: >-
+      storage.volumes names must be unique. Duplicate detected in:
+      {{ config_render_merged.storage.volumes | default([]) | map(attribute='name') | list }}
+    quiet: true
+  when: config_render_merged.storage.volumes | default([]) | length > 0
+
+- name: Validate each storage.volumes entry type is raw
+  ansible.builtin.assert:
+    that:
+      - item.type == 'raw'
+    fail_msg: >-
+      storage.volumes[{{ _sv_idx }}] '{{ item.name }}': type must be 'raw'.
+      Got '{{ item.type }}'. Only raw (RawVolumeConfig) is supported —
+      UserVolume cannot back a VG.
+    quiet: true
+  loop: "{{ config_render_merged.storage.volumes | default([]) }}"
+  loop_control:
+    index_var: _sv_idx
+    label: "{{ item.name | default('(unnamed)') }}"
+  when: config_render_merged.storage.volumes | default([]) | length > 0
+
+- name: Validate each storage.volumes entry has non-empty minSize and maxSize
+  ansible.builtin.assert:
+    that:
+      - item.minSize | default('') | length > 0
+      - item.maxSize | default('') | length > 0
+    fail_msg: >-
+      storage.volumes[{{ _sv_idx }}] '{{ item.name }}': minSize and maxSize
+      must be non-empty human byte-size strings (e.g. 20GB, 30GiB).
+      Got minSize='{{ item.minSize | default('') }}', maxSize='{{ item.maxSize | default('') }}'.
+    quiet: true
+  loop: "{{ config_render_merged.storage.volumes | default([]) }}"
+  loop_control:
+    index_var: _sv_idx
+    label: "{{ item.name | default('(unnamed)') }}"
+  when: config_render_merged.storage.volumes | default([]) | length > 0
+
+# Belt-and-suspenders LUKS rejection on top of JSON Schema additionalProperties:false.
+# Even if a schema bypass somehow slips an encryption key through, this assert catches
+# it. No LUKS on raw volumes — Talos v1.13 LUKS+LVM has an unresolved
+# shutdown/upgrade deadlock (talos#13354).
+- name: Reject LUKS/encryption keys on storage.volumes (talos#13354)
+  ansible.builtin.assert:
+    that:
+      - item.encryption is not defined
+      - item.luks is not defined
+    fail_msg: >-
+      storage.volumes[{{ _sv_idx }}] '{{ item.name }}': LUKS/encryption keys
+      are not allowed on RawVolumeConfig. Talos v1.13 LUKS+LVM has an
+      unresolved shutdown/upgrade deadlock (talos#13354). Remove the
+      encryption/luks key.
+    quiet: true
+  loop: "{{ config_render_merged.storage.volumes | default([]) }}"
+  loop_control:
+    index_var: _sv_idx
+    label: "{{ item.name | default('(unnamed)') }}"
+  when: config_render_merged.storage.volumes | default([]) | length > 0
+
+- name: Reject openebs flag on non-raw storage.volumes
+  ansible.builtin.assert:
+    that:
+      - not (item.openebs | default(false) | bool)
+    fail_msg: >-
+      storage.volumes[{{ _sv_idx }}] '{{ item.name }}': openebs: true requires
+      type: raw (RawVolumeConfig). Got type '{{ item.type }}'. OpenEBS LocalLV
+      LVM requires a raw block device for the VG, not a UserVolume.
+    quiet: true
+  loop: "{{ config_render_merged.storage.volumes | default([]) }}"
+  loop_control:
+    index_var: _sv_idx
+    label: "{{ item.name | default('(unnamed)') }}"
+  when:
+    - config_render_merged.storage.volumes | default([]) | length > 0
+    - item.type != 'raw'
+
+# ADR-013 openebs ⇒ raw rule: when features.openebs is true, exactly ONE volume
+# must have type == 'raw' AND openebs == true — that single volume is the VG
+# backing device. Zero means OpenEBS is enabled but no volume is marked; more than
+# one is ambiguous (which one drives the VG?).
+- name: Validate exactly one raw openebs backing volume when features.openebs is true
+  ansible.builtin.assert:
+    that:
+      - >-
+        (config_render_merged.storage.volumes | default([])
+         | selectattr('type', 'equalto', 'raw')
+         | selectattr('openebs', 'defined')
+         | selectattr('openebs', 'equalto', true)
+         | list | length) == 1
+    fail_msg: >-
+      features.openebs is true but there is not exactly ONE storage.volumes
+      entry with type: raw AND openebs: true.
+      Found volumes: {{ config_render_merged.storage.volumes | default([]) | map(attribute='name') | list }}.
+      Set openebs: true on exactly one type: raw volume, or set
+      features.openebs: false.
+    quiet: true
+  when: config_render_merged.features.openebs | default(false) | bool
 
 # --- hcloud topology validation ---
 

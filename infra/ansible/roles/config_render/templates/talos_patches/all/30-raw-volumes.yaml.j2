@@ -1,0 +1,33 @@
+{{ config_render_header }}
+# Layer 1 structured helper: Talos RawVolumeConfig documents for OpenEBS backing
+# storage. Each storage.volumes entry with type == 'raw' produces one separate
+# RawVolumeConfig config document (apiVersion: v1alpha1, kind: RawVolumeConfig),
+# NOT a strategic merge into machine:.
+#
+# Talos provisions raw partitions from the matching disk's free space at config
+# time. The partition surfaces at the stable symlink:
+#   /dev/disk/by-partlabel/r-<name>
+# For name: openebs-lvm → /dev/disk/by-partlabel/r-openebs-lvm
+#
+# The init container in the OpenEBS node DaemonSet (Flux-side catalog at
+# _components/openebs/) verifies the partlabel exists before running pvcreate/
+# vgcreate. Talos only provisions the partition — it does NOT validate
+# post-provisioning (the init container is the fail-loud consumer guard).
+#
+# No LUKS: Talos v1.13 RawVolumeConfig+LUKS has an unresolved shutdown/upgrade
+# deadlock (talos#13354). The schema and validation structurally reject
+# encryption keys — no encryption fields are emitted here.
+#
+# Gated on features.openebs — not emitted when openebs is disabled.
+# Numeric prefix 30: after 25-kernel-modules, before 90-user-raw.
+{% for vol in config_render_storage_raw_volumes %}
+---
+apiVersion: v1alpha1
+kind: RawVolumeConfig
+name: {{ vol.name }}
+provisioning:
+  diskSelector:
+    match: {{ vol.diskSelector }}
+  minSize: {{ vol.minSize }}
+  maxSize: {{ vol.maxSize }}
+{% endfor %}

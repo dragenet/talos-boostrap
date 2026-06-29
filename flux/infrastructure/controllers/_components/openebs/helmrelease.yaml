@@ -1,0 +1,182 @@
+---
+# OpenEBS LVM LocalPV CSI driver HelmRelease.
+#
+# This is a purely Flux-managed component — no pre-Flux Ansible install,
+# no adoption handshake (unlike cilium/hcloud-ccm). Flux installs the
+# chart from scratch when the catalog entry is first included in
+# generated/selected/kustomization.yaml.
+#
+# Talos coupling (single point): the init-container vg-provision in the
+# postRenderer patch reads /dev/disk/by-partlabel/r-openebs-lvm, which is
+# created by the Talos RawVolumeConfig (name: openebs-lvm). The init
+# container fails loudly if the partition is absent — never touches
+# a wrong device. Re-run bootstrap-talos to provision the partition
+# before enabling the Flux catalog entry.
+#
+# Namespace: csi-openebs-system (CSI-specific convention; see README).
+#
+# No dependsOn — the chart bundles its own CRDs via crds.* values,
+# and there is no snapshot-controller dependency (the chart also
+# ships its own VolumeSnapshot CRDs via crds.csi.volumeSnapshots).
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: openebs-lvm-localpv
+  namespace: csi-openebs-system
+spec:
+  interval: 1h
+  releaseName: openebs-lvm-localpv
+  targetNamespace: csi-openebs-system
+  install:
+    createNamespace: true
+  chart:
+    spec:
+      chart: lvm-localpv
+      version: 1.9.1  # pin: latest stable, released 2026-06-10
+      sourceRef:
+        kind: HelmRepository
+        name: openebs-lvm-localpv
+        namespace: csi-openebs-system
+  values:
+    # ----- Node DaemonSet scheduling (kube1 hybrids) -----
+    # lvmNode.tolerations replaces the chart default (empty list → no
+    # tolerations block rendered). Re-state everything needed for kube1
+    # hybrid nodes, including the external-cloud-provider uninitialized
+    # taint (same Cilium issue #41921 concern — the node DaemonSet must
+    # schedule before hcloud CCM clears the taint on a fresh bootstrap).
+    lvmNode:
+      tolerations:
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+        - key: "node-role.kubernetes.io/master"
+          operator: "Exists"
+        - key: "node.kubernetes.io/not-ready"
+          operator: "Exists"
+        - key: "node.cloudprovider.kubernetes.io/uninitialized"
+          operator: "Exists"
+          effect: "NoSchedule"
+
+    # ----- Pin the lvm-driver plugin image -----
+    # The chart default inherits appVersion, which can be a -develop
+    # tag on pre-release charts. Pin explicitly to the stable v1.9.1.
+    # 🛠 Keep in sync with init-container lvm-driver image in
+    #    postRenderers patch — update both on version bump.
+    lvmPlugin:
+      image:
+        tag: 1.9.1  # pin: matches chart appVersion v1.9.1 stable
+
+    # ----- CRDs -----
+    # The chart bundles its own CRDs via a crds sub-chart. Keep
+    # lvmLocalPv CRDs. Enable VolumeSnapshot CRDs since thin
+    # provisioning + snapshots are enabled (no snapshot-controller
+    # or VolumeSnapshot CRDs exist elsewhere in the repo — clean).
+    crds:
+      lvmLocalPv:
+        enabled: true
+      csi:
+        volumeSnapshots:
+          # The lvm-localpv chart embeds its own snapshot-controller —
+          # no external snapshot-controller/CRDs required. If a
+          # cluster-wide snapshot stack is added later, this must be
+          # disabled to avoid ownership conflicts.
+          enabled: true
+
+  # ----- VG-provisioning init container (post-render strategic merge) -----
+  # The lvm-localpv chart does NOT expose an initContainers hook on the
+  # node DaemonSet. We inject a privileged init container via a Flux
+  # Kustomize post-renderer patch. The init container creates the LVM
+  # volume group (openebs-vg) on the raw partition provisioned by Talos
+  # (/dev/disk/by-partlabel/r-openebs-lvm).
+  #
+  # Idempotent across all edge states:
+  #   1. VG already exists              → no-op
+  #   2. Device not found               → FATAL (Talos partition missing)
+  #   3. PV assigned to openebs-vg      → vgscan cache recovery, succeeds
+  #      but stale cache
+  #   4. PV belongs to a different VG   → FATAL, manual intervention required
+  #   5. Orphan PV (pvcreate done,      → skip pvcreate, vgcreate directly
+  #      vgcreate interrupted)
+  #   6. Fresh device                   → pvcreate + vgcreate
+  # Fails loudly if the partition is absent — never creates a VG on a
+  # wrong/blank device.
+  #
+  # LVM locking is disabled (locking_type=0) for the init container only
+  # — the main lvm-driver container uses normal locking. This avoids
+  # needing /run/lock hostPath mount and is safe because the init
+  # container runs once, sequentially, before the main driver starts.
+  #
+  # The image reuses the pinned openebs/lvm-driver (lvm-localpv plugin)
+  # image — it ships lvm2 (pvcreate, vgcreate, vgs). Tag pinned to 1.9.1.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: DaemonSet
+              name: openebs-lvm-localpv-node
+            patch: |-
+              apiVersion: apps/v1
+              kind: DaemonSet
+              metadata:
+                name: openebs-lvm-localpv-node
+              spec:
+                template:
+                  spec:
+                    initContainers:
+                      - name: vg-provision
+                        # 🛠 Keep in sync with lvmPlugin.image.tag above —
+                        #    update both on version bump.
+                        image: docker.io/openebs/lvm-driver:1.9.1
+                        imagePullPolicy: IfNotPresent
+                        command:
+                          - sh
+                          - -c
+                          - |
+                            set -euo pipefail
+                            VG=openebs-vg
+                            DEV=/dev/disk/by-partlabel/\
+                            r-openebs-lvm
+                            vgs "$VG" &>/dev/null \
+                              && exit 0
+                            [ -e "$DEV" ] || {
+                              echo "FATAL: $DEV not found"
+                              echo "Apply Talos RawVolumeConfig first"
+                              exit 1; }
+                            PV_VG=$(pvs --noheadings \
+                              -o vg_name "$DEV" 2>/dev/null \
+                              | tr -d ' ' || true)
+                            if [ -n "$PV_VG" ]; then
+                              if [ "$PV_VG" = "$VG" ]; then
+                                vgscan --cache 2>/dev/null \
+                                  || true
+                                vgs "$VG" &>/dev/null \
+                                  && exit 0
+                              fi
+                              echo "FATAL: $DEV belongs to" \
+                                   "VG '$PV_VG' not '$VG'"
+                              exit 1
+                             fi
+                             # Recover orphan PV: pvcreate succeeded in a
+                             # previous pod attempt but vgcreate was
+                             # interrupted — device is an existing PV with
+                             # blank VG membership. Skip pvcreate and go
+                             # straight to vgcreate.
+                             if pvs "$DEV" &>/dev/null; then
+                               echo "Recovering orphan PV — running vgcreate..."
+                               vgcreate \
+                                 --config 'global {locking_type=0}' \
+                                 "$VG" "$DEV"
+                               echo "VG $VG provisioned."
+                               exit 0
+                             fi
+                             pvcreate \
+                               --config 'global {locking_type=0}' \
+                               "$DEV"
+                             vgcreate \
+                               --config 'global {locking_type=0}' \
+                               "$VG" "$DEV"
+                             echo "VG $VG provisioned."
+                        securityContext:
+                          privileged: true
+                        volumeMounts:
+                          - name: device-dir
+                            mountPath: /dev

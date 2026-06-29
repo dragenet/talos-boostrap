@@ -1,0 +1,24 @@
+---
+# _components/openebs/ — OpenEBS LVM LocalPV CSI driver.
+#
+# Owner: Template maintainers. Edit only when updating the OpenEBS
+# adoption contract; cluster-specific overrides go through
+# ../../overlays/clusters/kube1/ (user-owned patches).
+#
+# Installs OpenEBS LVM LocalPV into the dedicated csi-openebs-system
+# namespace (CSI-specific convention). This is a purely Flux-managed
+# component — no pre-Flux Ansible install, no adoption handshake.
+#
+# The node DaemonSet is patched via a Flux postRenderer to inject
+# a privileged VG-provisioning init container. The init container
+# creates the LVM volume group (openebs-vg) on the raw partition
+# provisioned by Talos RawVolumeConfig (/dev/disk/by-partlabel/r-openebs-lvm).
+#
+# Deployment order: Namespace → HelmRepository → HelmRelease + StorageClass.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - helmrepository.yaml
+  - helmrelease.yaml
+  - openebs-lvm-localpv.yaml

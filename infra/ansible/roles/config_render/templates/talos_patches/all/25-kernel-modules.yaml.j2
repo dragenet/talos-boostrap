@@ -1,0 +1,22 @@
+{{ config_render_header }}
+# Layer 1 structured helper: device-mapper kernel modules for OpenEBS LocalLV LVM.
+# OpenEBS lvm-localpv requires these modules loaded before the node DaemonSet
+# can create PVs and VGs. Talos does not load device-mapper modules by default
+# — they are declared declaratively via machine.kernel.modules for early loading
+# (loaded during init and survive reboots).
+#
+# Modules:
+#   dm_mod       — base device-mapper kernel module
+#   dm_snapshot  — required by lvm-localpv for volume snapshots
+#   dm_thin_pool — required for thin-provisioned volumes (ADR-009 addendum §1a #3)
+#
+# Gated on features.openebs — not emitted when openebs is disabled.
+# Numeric prefix 25: after 20-install (computed install image), before 30-raw-volumes.
+# This is a strategic merge into the v1alpha1 machine document.
+---
+machine:
+  kernel:
+    modules:
+      - name: dm_mod
+      - name: dm_snapshot
+      - name: dm_thin_pool

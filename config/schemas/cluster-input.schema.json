@@ -160,7 +160,42 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "volumes": { "type": "array" }
+        "volumes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "type", "diskSelector", "minSize", "maxSize"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Talos volume name (1–34 chars, ASCII letters/digits/hyphens). Partlabel: /dev/disk/by-partlabel/r-<name>.",
+                "pattern": "^[A-Za-z0-9-]{1,34}$"
+              },
+              "type": {
+                "type": "string",
+                "enum": ["raw"],
+                "description": "Volume type: raw (RawVolumeConfig). Only raw is supported — UserVolume cannot back a VG."
+              },
+              "diskSelector": {
+                "type": "string",
+                "description": "CEL expression. system_disk targets the boot/system disk free space. !system_disk targets non-boot disks."
+              },
+              "minSize": {
+                "type": "string",
+                "description": "Minimum partition size (human byte size: 20GB, 30GiB)."
+              },
+              "maxSize": {
+                "type": "string",
+                "description": "Maximum partition size (human byte size). Equal to minSize for fixed-size partitions."
+              },
+              "openebs": {
+                "type": "boolean",
+                "description": "Marks this volume as the OpenEBS LVM VG backing device. vgName is Flux-side only (hardcoded in catalog)."
+              }
+            }
+          }
+        }
       }
     },
     "hcloud": {

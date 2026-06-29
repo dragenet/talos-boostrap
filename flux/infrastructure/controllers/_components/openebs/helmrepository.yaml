@@ -1,0 +1,15 @@
+---
+# HelmRepository for the standalone OpenEBS lvm-localpv chart.
+#
+# Uses the dedicated lvm-localpv repo (https://openebs.github.io/lvm-localpv),
+# NOT the umbrella openebs chart (which pulls hostpath + ZFS + Mayastor).
+#
+# Lives in csi-openebs-system alongside the HelmRelease it serves.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: openebs-lvm-localpv
+  namespace: csi-openebs-system
+spec:
+  interval: 1h
+  url: https://openebs.github.io/lvm-localpv

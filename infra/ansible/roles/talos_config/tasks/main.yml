@@ -291,6 +291,8 @@
 #   all/06-cluster.yaml.j2                  → config/clusters/<cluster>/talos/all.yaml (user-owned)
 #   all/10-external-cloud-provider.yaml.j2  → external cloud provider (hcloud CCM selected)
 #   all/20-install.yaml.j2                  → machine.install.image (+ optional Talos certSANs)
+#   all/25-kernel-modules.yaml.j2           → device-mapper kernel modules (openebs enabled)
+#   all/30-raw-volumes.yaml.j2              → RawVolumeConfig per storage.volumes (openebs enabled)
 #   all/90-user-raw.yaml.j2                 → raw talos.patches.all fragments (if any)
 #   controlplane/05-base.yaml.j2            → config/talos/base/controlplane.yaml (template-owned)
 #   controlplane/06-cluster.yaml.j2         → config/clusters/<cluster>/talos/controlplane.yaml (user-owned)
