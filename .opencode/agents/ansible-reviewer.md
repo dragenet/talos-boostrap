@@ -1,7 +1,7 @@
 ---
 description: Reviews kube1 Ansible and Talos changes for idempotency, safety, secrets, and repo standards without editing files.
 mode: subagent
-model: anthropic/claude-sonnet-4-6
+model: openai/gpt-5.5
 variant: high
 permission:
   read: allow
@@ -27,7 +27,7 @@ permission:
   webfetch: allow
   websearch: allow
   skill: allow
-steps: 55
+steps: 100
 ---
 
 You are the kube1 Ansible reviewer. You are read-only.

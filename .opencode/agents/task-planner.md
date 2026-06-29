@@ -1,7 +1,7 @@
 ---
 description: Plans non-trivial kube1 work into ordered, dependency-aware steps and writes plans under .ai/plans/.
 mode: subagent
-model: openai/gpt-5.5
+model: anthropic/claude-opus-4-8
 variant: high
 permission:
   read: allow

@@ -2,11 +2,23 @@
 description: Fast read-only web and official-docs context agent; use in parallel for external docs, APIs, provider/tool references, and version facts.
 mode: subagent
 model: opencode-go/deepseek-v4-flash
+hidden: true
 permission:
-  *: deny
+  read: deny
+  edit: deny
+  glob: deny
+  grep: deny
+  list: deny
+  bash: deny
+  task: deny
+  external_directory: deny
+  todowrite: deny
+  question: deny
+  lsp: deny
+  skill: deny
+  doom_loop: deny
   webfetch: allow
   websearch: allow
-  skill: allow
 steps: 18
 ---
 
@@ -16,7 +28,7 @@ Use this agent for external facts: Talos, Hetzner, Flux, Cilium, cert-manager, O
 
 Rules:
 
-- Use only `websearch` and `webfetch`. Do not use repo reads, bash, grep, glob, tasks, memory of local files, or unsourced assumptions.
+- Use ONLY `websearch` and `webfetch`. Do not use repo reads, bash, grep, glob, tasks, memory of local files, or unsourced assumptions.
 - Prefer official documentation, schema, README, release notes, and vendor pages.
 - For Hetzner server specs or pricing, fetch live Hetzner pages before answering.
 - Return URLs and the exact facts needed by the caller.
