@@ -2,14 +2,13 @@
 # Load config inputs: defaults + selected-cluster overrides + nodes (ADR-016).
 #
 # Loading order:
-#   1. config/defaults/cluster.yaml         — always loaded
+#   1. config/defaults/cluster.yaml         — always loaded (template-owned)
 #   2. config/clusters/{{ config_cluster }}/cluster.yaml  — selected-cluster overrides
 #   3. config/clusters/{{ config_cluster }}/nodes.yaml    — selected-cluster nodes
 #
-# Legacy fallback (ADR-016 staged compatibility):
-#   When selected-cluster files do not exist, fall back to config/overrides/*
-#   with a deprecation warning. This fallback will be removed in a future cleanup
-#   once all clusters have migrated.
+# The selected-cluster cluster.yaml MUST exist (fail-fast with a clear message
+# naming the path and the -e config_cluster=<name> selector). nodes.yaml is
+# optional — absent nodes resolve to {nodes: []}.
 #
 # Deep-merges defaults with overrides (overrides win per-key).
 # User-owned lists (nodes, storage.volumes) replace defaults entirely.
@@ -20,38 +19,30 @@
   register: config_render_defaults_raw
   check_mode: false
 
-# ─── Resolve overrides source: selected-cluster or legacy fallback (ADR-016) ───
+# ─── Validate selected-cluster inputs ───
 
-- name: Check if selected-cluster cluster.yaml exists
+- name: Assert selected-cluster cluster.yaml exists
   ansible.builtin.stat:
     path: "{{ config_render_cluster_config_path }}"
   register: config_render_cluster_config_stat
   check_mode: false
 
-- name: Read selected-cluster overrides config
+- name: Fail fast if selected-cluster cluster.yaml is missing
+  ansible.builtin.assert:
+    that: config_render_cluster_config_stat.stat.exists
+    fail_msg: >-
+      config/clusters/{{ config_cluster }}/cluster.yaml not found.
+      Set the cluster selector with -e config_cluster=<name> (default: kube1).
+      Create the file at config/clusters/{{ config_cluster }}/cluster.yaml
+      with at minimum provider.name and cluster.kubernetesVersion.
+
+- name: Read selected-cluster cluster.yaml
   ansible.builtin.slurp:
     src: "{{ config_render_cluster_config_path }}"
-  register: config_render_overrides_raw_cluster
+  register: config_render_overrides_raw
   check_mode: false
-  when: config_render_cluster_config_stat.stat.exists
 
-- name: Fall back to legacy overrides config with deprecation warning
-  when: not config_render_cluster_config_stat.stat.exists
-  block:
-    - name: Warn about legacy overrides fallback (ADR-016 migration)
-      ansible.builtin.debug:
-        msg: >-
-          DEPRECATION: config/clusters/{{ config_cluster }}/cluster.yaml not found;
-          falling back to config/overrides/cluster.yaml. This is a legacy path
-          for ADR-016 staged compatibility. Migrate your overrides to
-          config/clusters/{{ config_cluster }}/cluster.yaml.
-    - name: Read legacy overrides config
-      ansible.builtin.slurp:
-        src: "{{ config_render_overrides_path }}"
-      register: config_render_overrides_raw_legacy
-      check_mode: false
-
-# ─── Resolve nodes source ───
+# ─── Resolve nodes source (optional) ───
 
 - name: Check if selected-cluster nodes.yaml exists
   ansible.builtin.stat:
@@ -59,44 +50,19 @@
   register: config_render_cluster_nodes_stat
   check_mode: false
 
-- name: Read selected-cluster nodes config
+- name: Read selected-cluster nodes.yaml
   ansible.builtin.slurp:
     src: "{{ config_render_cluster_nodes_path }}"
-  register: config_render_nodes_raw_cluster
+  register: config_render_nodes_raw
   check_mode: false
   when: config_render_cluster_nodes_stat.stat.exists
 
-- name: Fall back to legacy nodes config with deprecation warning
+- name: Resolve nodes to empty list when nodes.yaml is absent
+  ansible.builtin.set_fact:
+    config_render_nodes_raw:
+      content: "bm9kZXM6IFtdCg=="  # {nodes: []} base64-encoded
+      encoding: base64
   when: not config_render_cluster_nodes_stat.stat.exists
-  block:
-    - name: Warn about legacy nodes fallback (ADR-016 migration)
-      ansible.builtin.debug:
-        msg: >-
-          DEPRECATION: config/clusters/{{ config_cluster }}/nodes.yaml not found;
-          falling back to config/overrides/nodes.yaml. This is a legacy path
-          for ADR-016 staged compatibility. Migrate your node definitions to
-          config/clusters/{{ config_cluster }}/nodes.yaml.
-    - name: Read legacy nodes config
-      ansible.builtin.slurp:
-        src: "{{ config_render_nodes_path }}"
-      register: config_render_nodes_raw_legacy
-      check_mode: false
-
-# ─── Resolve effective overrides and nodes from the selected source ───
-
-- name: Resolve effective overrides source (cluster or legacy)
-  ansible.builtin.set_fact:
-    config_render_overrides_raw: >-
-      {{ config_render_overrides_raw_cluster
-         if config_render_cluster_config_stat.stat.exists
-         else config_render_overrides_raw_legacy }}
-
-- name: Resolve effective nodes source (cluster or legacy)
-  ansible.builtin.set_fact:
-    config_render_nodes_raw: >-
-      {{ config_render_nodes_raw_cluster
-         if config_render_cluster_nodes_stat.stat.exists
-         else config_render_nodes_raw_legacy }}
 
 # ─── Parse and merge ───
 

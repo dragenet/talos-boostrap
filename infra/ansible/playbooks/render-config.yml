@@ -22,8 +22,8 @@
 # Cluster selection (ADR-016):
 #   The selected cluster determines which config/clusters/<name>/ directory is
 #   loaded. Defaults to kube1. Override with -e config_cluster=<name>.
-#   Legacy fallback: if config/clusters/<name>/cluster.yaml is absent, the
-#   compiler loads config/overrides/cluster.yaml instead with a deprecation warning.
+#   config/clusters/<name>/cluster.yaml MUST exist — a missing file fails fast
+#   with a clear error naming the path and selector. nodes.yaml is optional.
 #
 # Usage:
 #   ansible-playbook playbooks/render-config.yml

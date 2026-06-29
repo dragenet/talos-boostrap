@@ -111,3 +111,21 @@ Ansible chooses which components to include (for example external cloud provider
 - `deviceSelector` now uses `hardwareAddr: '86:00:00:*'` (Hetzner private-network OUI glob), replacing the unstable `interface: eth1` pin. This aligns with Talos upstream guidance to prefer hardware-address over interface-name selectors.
 - `talos.install.*` and `talos.patches.*` transitional schema keys have been removed from `config/defaults/cluster.yaml`, the JSON Schema validation, and the config_render role. Raw Talos escapes now go through `config/clusters/kube1/talos/*.yaml` overlay files only.
 - The network interface fragment (`machine.network.interfaces`) remains a computed integration fragment in Ansible (not hand-authored in the Talos overlay) to preserve the VIP as a single source of truth — the VIP address and endpoint are set by the render compiler, not by user Talos patches.
+
+## Addendum — 2026-06-30
+
+**Summary:** The dormant legacy `config/overrides/` fallback tree and the deprecated `nodes[].patch` render path have been removed. Cluster configuration is now fully cluster-scoped under `config/clusters/<cluster>/`, and per-node Talos customization is expressed as Talos-shaped patch manifests rather than inline `nodes[].patch` fields.
+
+**What was removed:**
+- The legacy `config/overrides/` directory and its fallback lookup logic in the config compiler.
+- The deprecated `nodes[].patch` render path, which previously allowed inline Talos patch fragments per node in `nodes.yaml`.
+- All code, schema, and render logic that treated `config/overrides/` as a source of truth or fallback.
+
+**Current architecture:**
+- The config compiler input model is `config/defaults/` (template-owned) layered with `config/clusters/<cluster>/` (cluster-owned).
+- Cluster-specific configuration lives under `config/clusters/<cluster>/`, including:
+  - `cluster.yaml` — provider, features, versions, Flux repo/auth, and non-Talos cluster settings.
+  - `nodes.yaml` — node list, roles, and provider facts; no inline `patch` field.
+  - `talos/` — cluster-specific Talos-shaped machine config patch manifests, including per-role and per-node overlays.
+- Per-node Talos customization is authored as Talos-shaped patch manifests under `config/clusters/<cluster>/talos/nodes/<node>.yaml` (or equivalent cluster-defined layout) and composed by Ansible into the ordered patch stack.
+- Generated machine configs and Talos secrets remain uncommitted/gitignored, regenerated from the committed patch stack plus the Talos secrets bundle.

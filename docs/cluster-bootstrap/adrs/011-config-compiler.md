@@ -49,3 +49,12 @@ Rendered output is committed but is **not** a source of truth — CI asserts `re
 - **Ansible/render is needed for:** feature enable/disable, and any Talos-machine-config change (CNI, disk/volumes, network, podCIDR, image extensions incl. Tailscale, kubelet args). **Pure-git, no Ansible:** patching enabled features, apps, Flux-only scalars, SOPS secret rotation.
 - Template updates touch only template-owned files, so `git pull upstream` is conflict-free against user-owned config.
 - Build the compiler in stages — MVP first (direct `cluster.yaml` + `substituteFrom` + hand-written component lists), then the overlay, validation, and patch wiring.
+
+## Addendum — 2026-06-30
+
+**Summary:** The two-layer input model has been renamed and restructured. The user-owned layer is now cluster-scoped under `config/clusters/<cluster>/` rather than the generic `config/overrides/` tree.
+
+**What changed:**
+- The `config/defaults/` + `config/overrides/` two-layer overlay model is now `config/defaults/` + `config/clusters/<cluster>/`.
+- User-owned cluster configuration — including `cluster.yaml`, `nodes.yaml`, and Talos overlay manifests — lives under `config/clusters/<cluster>/` (e.g. `config/clusters/kube1/`).
+- The `defaults/` + `clusters/<cluster>/` merge semantics described in this ADR remain unchanged; only the path and naming of the user-owned layer changed.

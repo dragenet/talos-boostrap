@@ -129,10 +129,11 @@
     quiet: true
   when: config_render_merged.features.ingress not in ['none', '']
 
-# --- Stale transitional key rejection (config schema migration, June 2026) ---
-# features.cni and features.hcloudCcm have graduated to their own top-level keys
-# (cni.name and cloud_controller_manager.enabled). Reject stale keys in overrides
-# with a clear migration error rather than silently ignoring them.
+# --- Permanent unsupported-key rejection ---
+# features.cni and features.hcloudCcm are permanently unsupported. They were
+# replaced by top-level keys (cni.name and cloud_controller_manager.enabled)
+# and must not appear in overrides. Reject them loudly rather than silently
+# ignoring them.
 
 - name: Reject stale transitional features.cni in overrides
   ansible.builtin.assert:
@@ -199,12 +200,12 @@
       cluster_endpoint var directly in overrides; use cluster.endpoint instead.
     quiet: true
 
-# --- VIP single source of truth ---
-# cluster.vip is the only source for the VIP. talos.network.vip was a duplicate
-# that risked silent divergence (Talos patch VIP vs. Ansible cluster_vip/endpoint).
-# The renderer sources the Talos network patch VIP from cluster.vip; setting
-# talos.network.vip has no effect and is rejected. Defaults no longer declare
-# it, so any presence in the merged config came from overrides.
+# --- Permanent unsupported-key: VIP single source of truth ---
+# cluster.vip is the only supported source for the VIP. talos.network.vip is
+# an unsupported key — it risks silent divergence (Talos patch VIP vs.
+# Ansible cluster_vip/endpoint). The renderer sources the Talos network patch
+# VIP from cluster.vip; setting talos.network.vip has no effect and is
+# permanently rejected. Any presence in the merged config came from overrides.
 
 - name: Reject deprecated talos.network.vip in favour of cluster.vip
   ansible.builtin.assert:
@@ -216,14 +217,15 @@
       config/clusters/{{ config_cluster }}/cluster.yaml and set cluster.vip instead.
     quiet: true
 
-# --- Removed transitional key rejection (talos.install, talos.patches) ---
-# talos.install and talos.patches were removed in the ADR-016 schema narrowing.
-# talos.install.disk/diskSelector were the old way to configure the Talos
-# installer — these now go through config/clusters/<name>/talos/all.yaml overlay
-# or are computed from talos.version + talos.extensions.
-# talos.patches.all/controlplane were raw Talos patch fragments — these now go
-# through config/clusters/<name>/talos/all.yaml and controlplane.yaml overlays.
-# Reject them with migration guidance rather than silently ignoring.
+# --- Permanent unsupported-key rejection (talos.install, talos.patches) ---
+# talos.install and talos.patches are permanently unsupported. They were
+# excluded from the schema in ADR-016. talos.install.disk/diskSelector are
+# unsupported flat keys — configure the installer through
+# config/clusters/<name>/talos/all.yaml overlay or rely on the computed
+# installer image from talos.version + talos.extensions.
+# talos.patches.all/controlplane are unsupported raw patch fragment keys —
+# use config/clusters/<name>/talos/all.yaml and controlplane.yaml overlays
+# instead. Reject these keys loudly rather than silently ignoring them.
 
 - name: Reject talos.install.disk (removed — use overlay instead)
   ansible.builtin.assert:
@@ -268,6 +270,24 @@
       talos.patches.controlplane is removed — use
       config/clusters/{{ config_cluster }}/talos/controlplane.yaml overlay instead.
     quiet: true
+
+# -- Permanent unsupported-key rejection (nodes[].patch) ---
+# The nodes[].patch key was removed in ADR-016 (2026-06-30). Per-node Talos
+# machine configuration now lives exclusively under
+# config/clusters/<name>/talos/nodes/<node>.yaml. Reject loudly so an
+# operator doesn't think a stale patch key is being applied.
+
+- name: Reject nodes[].patch (removed — use talos/nodes/*.yaml instead)
+  ansible.builtin.assert:
+    that: item.patch is not defined
+    fail_msg: >-
+      nodes[].patch is removed. Move per-node Talos configuration to
+      config/clusters/{{ config_cluster }}/talos/nodes/{{ item.name | default('unknown') }}.yaml
+      as a Talos-shaped patch manifest.
+    quiet: true
+  loop: "{{ config_render_nodes.nodes | default([]) }}"
+  loop_control:
+    label: "{{ item.name | default('(unnamed)') }}"
 
 # --- storage.volumes structured validation (ADR-013, ADR-009 addendum) ---
 # Replaces the old deferred-guard with real validation against the structured

@@ -12,7 +12,7 @@
 # Only the selected provider's group_vars are rendered (gated by
 # provider.name). The other provider's generated directory is left untouched
 # and may be empty or stale — always load the inventory matching provider.name
-# in config/overrides/cluster.yaml. Switching providers requires a re-render
+# in config/clusters/<cluster>/cluster.yaml. Switching providers requires a re-render
 # before using the new provider's inventory.
 #
 # In check mode (config_render_check=true), output goes to config_render_temp_dir

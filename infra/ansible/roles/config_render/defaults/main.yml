@@ -14,20 +14,15 @@ config_render_repo_root: "{{ playbook_dir }}/../../.."
 # path is loaded for provider/features/versions/nodes.
 config_cluster: kube1  # noqa: var-naming[no-role-prefix] — user-facing cluster selector, -e config_cluster=<name>
 
-# ─── Selected-cluster input paths (ADR-016) ────────────────────────────────
-# These are the primary input paths. config/defaults/cluster.yaml is always
-# loaded; the selected-cluster files are deep-merged as overrides.
+# ─── Primary input paths (ADR-016/ADR-017) ─────────────────────────────────
+# config/defaults/cluster.yaml is the template-owned, always-loaded defaults
+# layer. The selected-cluster files are deep-merged as overrides (overrides
+# win per-key). User-owned lists (nodes, storage.volumes) replace defaults
+# entirely.
+config_render_defaults_path: "{{ config_render_repo_root }}/config/defaults/cluster.yaml"
 config_render_cluster_dir: "{{ config_render_repo_root }}/config/clusters/{{ config_cluster }}"
 config_render_cluster_config_path: "{{ config_render_cluster_dir }}/cluster.yaml"
 config_render_cluster_nodes_path: "{{ config_render_cluster_dir }}/nodes.yaml"
-
-# ─── Legacy overrides fallback paths ───────────────────────────────────────
-# Kept for compatibility during migration (ADR-016 staged compatibility).
-# Used only when the selected-cluster files above do not exist. Emits a
-# deprecation warning when the fallback is consumed.
-config_render_defaults_path: "{{ config_render_repo_root }}/config/defaults/cluster.yaml"
-config_render_overrides_path: "{{ config_render_repo_root }}/config/overrides/cluster.yaml"
-config_render_nodes_path: "{{ config_render_repo_root }}/config/overrides/nodes.yaml"
 
 # ─── Shared Talos source paths (ADR-016) ───────────────────────────────────
 # Template-owned, cluster-agnostic Talos patch manifest directories.

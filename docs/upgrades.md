@@ -17,8 +17,7 @@ the selected cluster's inputs under `config/clusters/kube1/` — `cluster.yaml`
 Talos-shaped patch overlays under `config/clusters/kube1/talos/*` (per-role and
 per-node) — and emits the generated `inventories/.../group_vars/` +
 `infra/talos/patches/generated/` tree. Hand-editing generated files is a no-op —
-the next render overwrites them. The legacy `config/overrides/` tree still exists
-as a migration fallback but is no longer the primary source of truth.
+the next render overwrites them.
 
 ## Upgrading the Talos version
 

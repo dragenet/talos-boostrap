@@ -7,9 +7,9 @@
 # (overrides win per-key) and emits generated group_vars consumed by Ansible roles.
 #
 # This is the ADR-016 selected-cluster input path, loaded when
-# config_cluster=kube1 (the default). For the legacy overrides fallback, see
-# config/overrides/cluster.yaml — the render compiler falls back to that path
-# only when the selected-cluster file is absent.
+# config_cluster=kube1 (the default). config/clusters/kube1/ is the sole
+# user-owned source; it is deep-merged with config/defaults/cluster.yaml
+# (template-owned defaults) and rendered into Ansible group_vars.
 #
 # Edit THIS file to change cluster configuration, then run:
 #   ansible-playbook playbooks/render-config.yml -e config_cluster=kube1

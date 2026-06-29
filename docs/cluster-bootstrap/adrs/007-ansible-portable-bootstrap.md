@@ -28,3 +28,12 @@ The Ansible code is **cluster-template code**, not kube1-specific — it is the 
 - `manual` (bare-metal) is modelled as the "null provider" — it sits under `providers/` for symmetry but has the smallest surface (no CCM/CSI, no `--cloud-provider=external`, no dynamic inventory).
 - Roles are idempotent and FQCN-only (`ansible.builtin.*`, `hetzner.hcloud.*`). A second run must be a no-op.
 - Internal role var conventions (flat, namespaced `cluster_*`/`hcloud_*`/`talos_*`) are preserved: the compiler renders flat `group_vars` for roles to consume — `cluster.yaml`'s nested shape is the human surface only (ADR-011).
+
+## Addendum — 2026-06-30
+
+**Summary:** The cluster-specific configuration path referenced in the decision text has moved from the legacy `config/overrides/` tree to a cluster-scoped directory.
+
+**What changed:**
+- The statement that "cluster-specific values stay in `config/overrides/`" is outdated.
+- Cluster-specific values now live under `config/clusters/<cluster>/` (e.g. `config/clusters/kube1/`).
+- The Ansible bootstrap layer still reads committed `config/` and emits Talos + Flux artifacts; only the user-owned config path changed.

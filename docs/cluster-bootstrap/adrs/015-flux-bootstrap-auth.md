@@ -112,3 +112,12 @@ The `flux_bootstrap` role passes secrets to `flux bootstrap` with `no_log: true`
 - **Requiring all users to pre-create SSH keys and repository trust.** This is exactly `ssh-private-key` mode, which is supported, but making it the default would force every user through manual key provisioning before bootstrap. `provider-deploy-key` automates this for providers that expose an API.
 - **Provider API token stored in-cluster and used for reconciliation.** Rejected outright: a token that can create repository keys is far more powerful than the read-only `git pull` access Flux needs for reconciliation.
 - **Forcing repo auth before pre-Flux components.** Would block Cilium and CCM installation while the operator is still configuring Git credentials. Splitting the preflight lets the cluster reach a network-ready state before Flux auth is validated.
+
+## Addendum — 2026-06-30
+
+**Summary:** The user-owned configuration path referenced in the config surface has moved from `config/overrides/cluster.yaml` to a cluster-scoped location.
+
+**What changed:**
+- The reference to `config/overrides/cluster.yaml` in the "Config surface" section is outdated.
+- Cluster-specific Flux auth configuration is now rendered from `config/clusters/<cluster>/cluster.yaml` (e.g. `config/clusters/kube1/cluster.yaml`).
+- The renderer behavior, auth modes, and SOPS secret handling described in this ADR remain unchanged.

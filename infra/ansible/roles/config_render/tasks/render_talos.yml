@@ -136,7 +136,7 @@
      | select('ne', none) | reject('equalto', {}) | list | length == 0)
 
 # --- 06-cluster: config/clusters/<cluster>/talos/all.yaml (skip if comment-only) ---
-# Gracefully handles missing selected-cluster tree (legacy config/overrides/ path).
+# Gracefully handles a missing cluster overlay file.
 
 - name: Stat cluster all overlay source
   ansible.builtin.stat:
@@ -296,7 +296,7 @@
      | select('ne', none) | reject('equalto', {}) | list | length == 0)
 
 # --- 06-cluster: config/clusters/<cluster>/talos/controlplane.yaml (skip if comment-only) ---
-# Gracefully handles missing selected-cluster tree (legacy config/overrides/ path).
+# Gracefully handles a missing cluster overlay file.
 
 - name: Stat cluster controlplane overlay source
   ansible.builtin.stat:
@@ -486,7 +486,7 @@
      | select('ne', none) | reject('equalto', {}) | list | length == 0)
 
 # --- 06-cluster: config/clusters/<cluster>/talos/worker.yaml (skip if comment-only) ---
-# Gracefully handles missing selected-cluster tree (legacy config/overrides/ path).
+# Gracefully handles a missing cluster overlay file.
 
 - name: Stat cluster worker overlay source
   ansible.builtin.stat:
@@ -569,13 +569,13 @@
 # ===========================================================================
 # PER-NODE PATCHES (--config-patch <node>)
 # ===========================================================================
-# Sources (ADR-016 staged migration):
-#   Primary:   config/clusters/<cluster>/talos/nodes/<node>.yaml (Talos-shaped)
-#   Fallback:  nodes.yaml[].patch (legacy raw fragments, deprecated)
-# Both produce output in generated/nodes/<node>.yaml.j2.
+# Source: config/clusters/<cluster>/talos/nodes/<node>.yaml (Talos-shaped,
+# ADR-016). Only this path is active; legacy nodes.yaml[].patch raw fragments
+# were retired on 2026-06-30.
+#
+# Each node manifest is raw-wrapped and copied to generated/nodes/<node>.yaml.j2.
 
-# --- New path: per-node Talos manifests ---
-# Gracefully handles missing selected-cluster tree (legacy config/overrides/ path).
+# Gracefully handles a missing per-node talos overlay directory.
 
 - name: Stat per-node Talos overlay directory
   ansible.builtin.stat:
@@ -616,9 +616,7 @@
     path: "{{ config_render_talos_patches_out }}/nodes"
     state: directory
     mode: "0755"
-  when: >-
-    (config_render_talos_node_sources.files | default([]) | length > 0)
-    or (config_render_nodes_list | default([]) | length > 0)
+  when: config_render_talos_node_sources.files | default([]) | length > 0
 
 - name: Copy per-node Talos overlay manifests to generated tree
   ansible.builtin.copy:
@@ -640,55 +638,8 @@
     label: "{{ item.path | basename }}"
   when: config_render_talos_node_sources.files | default([]) | length > 0
 
-# --- Legacy fallback: nodes.yaml[].patch raw fragments ---
-
-- name: Compute nodes with raw patches (legacy fallback)
-  ansible.builtin.set_fact:
-    config_render_nodes_with_patches: >-
-      {{
-        config_render_nodes_list
-        | selectattr('patch', 'defined')
-        | rejectattr('patch', 'none')
-        | rejectattr('patch', 'equalto', [])
-        | rejectattr('name', 'in', config_render_talos_node_names | default([]))
-        | list
-      }}
-  # Nodes that already have a Talos overlay manifest in
-  # config/clusters/<cluster>/talos/nodes/<name>.yaml are excluded from legacy
-  # rendering — the new overlay wins per ADR-016 staged migration. The legacy
-  # fallback only renders nodes that have NO corresponding Talos overlay file.
-
-- name: Render legacy per-node patch files
-  ansible.builtin.copy:
-    content: |
-      {{ config_render_header }}
-      {{ '{% raw %}' }}
-      ---
-      # Layer 2 raw fragments: per-node patches for {{ item.name }}.
-      # Source: nodes.yaml (nodes[?name == '{{ item.name }}'].patch) — DEPRECATED.
-      # Migrate this content to config/clusters/{{ config_cluster }}/talos/nodes/{{ item.name }}.yaml
-      # as a Talos-shaped machine config patch manifest (ADR-016).
-      #
-      # Applied as --config-patch at apply-config time BEFORE role-required
-      # patches (hostname, nodeLabels, hybrid scheduling). Order is deliberate:
-      # role-required identity patches run last so they win (later patches win
-      # per Talos docs) and user raw fragments cannot accidentally erase
-      # hostname/role labels.
-      {% set raw_fragments = item.patch if (item.patch is iterable and item.patch is not string and item.patch is not mapping) else [item.patch] %}
-      {% for fragment in raw_fragments %}
-      {{ fragment }}
-      {% endfor %}
-      {{ '{% endraw %}' }}
-    dest: "{{ config_render_talos_patches_out }}/nodes/{{ item.name }}.yaml.j2"
-    mode: "0644"
-  loop: "{{ config_render_nodes_with_patches }}"
-  loop_control:
-    label: "{{ item.name }}"
-  when: config_render_nodes_with_patches | length > 0
-
 # --- Clean up stale per-node patch files ---
-# Remove generated node patches whose source no longer exists (neither
-# as a Talos overlay manifest nor as a legacy nodes.yaml entry).
+# Remove generated node patches whose Talos overlay source no longer exists.
 
 - name: Check if nodes directory exists
   ansible.builtin.stat:
@@ -703,13 +654,10 @@
   register: config_render_existing_node_patches
   when: config_render_nodes_dir_stat.stat.exists
 
-- name: Compute known node names (new Talos overlays + legacy patches)
+- name: Compute known node names from Talos overlay manifests
   ansible.builtin.set_fact:
     config_render_known_node_names: >-
-      {{
-        (config_render_talos_node_names | default([]))
-        + (config_render_nodes_with_patches | default([]) | map(attribute='name') | list)
-      }}
+      {{ config_render_talos_node_names | default([]) }}
 
 - name: Remove stale per-node patch files
   ansible.builtin.file:

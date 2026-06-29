@@ -2,8 +2,8 @@
 # yaml-language-server: $schema=../../schemas/nodes.schema.json
 # config/clusters/kube1/nodes.yaml — USER-OWNED per-node hardware configuration.
 #
-# Per-node overrides for hardware-specific settings (disk selectors, network
-# device selectors, raw Talos patches). The ADR-014 inventory already supplies
+# Per-node identity facts for hardware-specific settings (disk selectors,
+# network device selectors). The ADR-014 inventory already supplies
 # node public/private IPs and roles, so this file starts empty.
 #
 # This is the ADR-016 selected-cluster input path, loaded when
@@ -23,6 +23,6 @@
 #         interfaces:
 #           - name: private
 #             deviceSelector: null   # MAC or PCI selector when known
-#       patch: []                    # raw Talos YAML fragments for this node
+#       # For per-node Talos machine configuration, use talos/nodes/*.yaml instead.
 
 nodes: []

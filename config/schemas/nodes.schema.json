@@ -14,8 +14,7 @@
         "properties": {
           "name": { "type": "string" },
           "role": { "type": "string" },
-          "network": { "type": "object" },
-          "patch": {}
+          "network": { "type": "object" }
         }
       }
     }
