@@ -108,12 +108,6 @@ talos:
     # The render rejects direct overrides of the computed talos_extensions;
     # users add via this key (ADR-011 compute-key rule).
     extra: []
-  install:
-    # Disk selection for Talos system partition. null = Talos default.
-    disk: null
-    # CEL diskSelector expression (Talos v1.13+). Takes precedence over disk
-    # when both are set (ADR-013).
-    diskSelector: null
   network:
     # VIP lives at cluster.vip (single source of truth) — do not set it here.
     # The renderer rejects talos.network.vip in overrides to prevent divergence.
@@ -123,11 +117,6 @@ talos:
       # hardware identifiers are known; fall back to interface: otherwise.
       interface: null
       deviceSelector: null
-  # Raw Talos patch fragments (Layer 2, ADR-013). Applied in order after
-  # structured helpers; later patches win.
-  patches:
-    all: []
-    controlplane: []
 
 # CNI plugin: cilium | none. "none" leaves in-cluster CNI management enabled
 # (Talos default); "cilium" disables it for pre-Flux Cilium install.

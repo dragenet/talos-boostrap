@@ -6,7 +6,7 @@
 # Talos-shaped machine config patch manifests (ADR-016).
 #
 # Currently empty — the VIP and network interface selection remain as computed
-# integration fragments (sourced from cluster.vip and talos.network.defaultInterface
-# in cluster.yaml) to avoid duplicating the VIP source of truth. See the plan
-# for the eventual migration of interface selection to a Talos-shaped overlay
-# once deviceSelector is confirmed.
+# integration fragments. deviceSelector is now configured in cluster.yaml
+# (cluster-wide hardwareAddr: '86:00:00:*'); the computed 15-network.yaml.j2
+# fragment still owns the VIP. Neither the VIP nor the deviceSelector should be
+# duplicated in a controlplane overlay to avoid silent divergence.

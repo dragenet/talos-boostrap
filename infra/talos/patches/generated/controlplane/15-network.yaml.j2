@@ -17,7 +17,8 @@
 machine:
   network:
     interfaces:
-      - interface: eth1
+      - deviceSelector:
+          hardwareAddr: 86:00:00:*
         dhcp: true
         vip:
           ip: 10.0.0.10

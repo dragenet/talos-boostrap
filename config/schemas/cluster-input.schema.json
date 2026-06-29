@@ -84,14 +84,6 @@
             "extra": { "type": "array", "items": { "type": "string" } }
           }
         },
-        "install": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "disk": { "type": ["string", "null"] },
-            "diskSelector": { "type": ["string", "null"] }
-          }
-        },
         "network": {
           "type": "object",
           "additionalProperties": false,
@@ -104,14 +96,6 @@
                 "deviceSelector": { "type": ["object", "null"] }
               }
             }
-          }
-        },
-        "patches": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "all": { "type": "array", "items": { "type": ["string", "object", "array", "number", "boolean", "null"] } },
-            "controlplane": { "type": "array", "items": { "type": ["string", "object", "array", "number", "boolean", "null"] } }
           }
         }
       }

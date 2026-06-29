@@ -9,6 +9,8 @@
 #   /dev/disk/by-partlabel/r-<name>
 # For name: openebs-lvm → /dev/disk/by-partlabel/r-openebs-lvm
 #
+# Numeric prefix 30: after 25-kernel-modules (last computed fragment before user overlays).
+#
 # The init container in the OpenEBS node DaemonSet (Flux-side catalog at
 # _components/openebs/) verifies the partlabel exists before running pvcreate/
 # vgcreate. Talos only provisions the partition — it does NOT validate
@@ -19,7 +21,6 @@
 # encryption keys — no encryption fields are emitted here.
 #
 # Gated on features.openebs — not emitted when openebs is disabled.
-# Numeric prefix 30: after 25-kernel-modules, before 90-user-raw.
 {% for vol in config_render_storage_raw_volumes %}
 ---
 apiVersion: v1alpha1

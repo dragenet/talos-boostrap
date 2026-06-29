@@ -216,36 +216,57 @@
       config/clusters/{{ config_cluster }}/cluster.yaml and set cluster.vip instead.
     quiet: true
 
-# --- Deferred structured helpers (ADR-013) ---
-# The schema exposes these Layer-1 structured helpers, but the render compiler
-# does not yet emit them into the Talos machine config. Allowing a non-default
-# value would silently mislead the operator into thinking they configured disk
-# selection or data volumes. Reject any non-default value with a clear
-# "deferred / not implemented" message and point at the Layer-2 raw-fragment
-# workaround (talos.patches.all / nodes[].patch) so expressiveness is not lost.
-# Remove a check here once its helper is actually rendered.
+# --- Removed transitional key rejection (talos.install, talos.patches) ---
+# talos.install and talos.patches were removed in the ADR-016 schema narrowing.
+# talos.install.disk/diskSelector were the old way to configure the Talos
+# installer — these now go through config/clusters/<name>/talos/all.yaml overlay
+# or are computed from talos.version + talos.extensions.
+# talos.patches.all/controlplane were raw Talos patch fragments — these now go
+# through config/clusters/<name>/talos/all.yaml and controlplane.yaml overlays.
+# Reject them with migration guidance rather than silently ignoring.
 
-- name: Reject talos.install.disk (deferred — not yet rendered)
+- name: Reject talos.install.disk (removed — use overlay instead)
   ansible.builtin.assert:
-    that:
-      - config_render_merged.talos.install.disk | default(none) is none
+    that: config_render_merged.talos.install.disk is not defined
     fail_msg: >-
-      talos.install.disk is a deferred structured helper (ADR-013): the render
-      compiler does not yet emit machine.install.disk from it, so setting it
-      has no effect. Leave it null (Talos selects a disk automatically) or
-      supply a raw machine.install.disk fragment via talos.patches.all instead.
+      talos.install.disk is removed — use
+      config/clusters/{{ config_cluster }}/talos/all.yaml overlay with
+      machine.install.disk instead.
     quiet: true
 
-- name: Reject talos.install.diskSelector (deferred — not yet rendered)
+- name: Reject talos.install.diskSelector (removed — use overlay instead)
   ansible.builtin.assert:
-    that:
-      - config_render_merged.talos.install.diskSelector | default(none) is none
+    that: config_render_merged.talos.install.diskSelector is not defined
     fail_msg: >-
-      talos.install.diskSelector is a deferred structured helper (ADR-013): the
-      render compiler does not yet emit machine.install.diskSelector from it,
-      so setting it has no effect. Leave it null (Talos selects a disk
-      automatically) or supply a raw machine.install.diskSelector fragment via
-      talos.patches.all instead.
+      talos.install.diskSelector is removed — use
+      config/clusters/{{ config_cluster }}/talos/all.yaml overlay with
+      machine.install.diskSelector instead.
+    quiet: true
+
+- name: Reject removed talos.install key
+  ansible.builtin.assert:
+    that: config_render_merged.talos.install is not defined
+    fail_msg: >-
+      The entire talos.install key is removed. Use
+      config/clusters/{{ config_cluster }}/talos/all.yaml overlay with
+      machine.install.* fields instead, or rely on the computed installer image
+      from talos.version + talos.extensions.
+    quiet: true
+
+- name: Reject talos.patches.all (removed — use overlay instead)
+  ansible.builtin.assert:
+    that: config_render_merged.talos.patches.all is not defined
+    fail_msg: >-
+      talos.patches.all is removed — use
+      config/clusters/{{ config_cluster }}/talos/all.yaml overlay instead.
+    quiet: true
+
+- name: Reject talos.patches.controlplane (removed — use overlay instead)
+  ansible.builtin.assert:
+    that: config_render_merged.talos.patches.controlplane is not defined
+    fail_msg: >-
+      talos.patches.controlplane is removed — use
+      config/clusters/{{ config_cluster }}/talos/controlplane.yaml overlay instead.
     quiet: true
 
 # --- storage.volumes structured validation (ADR-013, ADR-009 addendum) ---

@@ -99,21 +99,15 @@ talos:
     base:
       - siderolabs/qemu-guest-agent
     extra: []
-  install:
-    disk: null
-    diskSelector: null
   network:
     # VIP is sourced from cluster.vip above (single source of truth).
     # talos.network.vip is intentionally absent — the renderer rejects it.
     defaultInterface:
-      # ADR-013 prefers deviceSelector (MAC / PCI identity) over interface
-      # names. Preserving interface: eth1 until a safe deviceSelector is
-      # confirmed via talosctl probe (see plan "Talos deviceSelector probe").
-      interface: eth1
-      deviceSelector: null
-  patches:
-    all: []
-    controlplane: []
+      # ADR-013 prefers deviceSelector (stable hardware identity) over
+      # interface names. Confirmed on kube1 via talosctl get links:
+      # eth1 HW addr is 86:00:00:4d:a8:b8; cluster-wide selector is safe.
+      deviceSelector:
+        hardwareAddr: '86:00:00:*'
 
 # CNI plugin — graduated from features.cni (config schema migration, June 2026).
 cni:

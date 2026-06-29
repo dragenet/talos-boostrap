@@ -7,7 +7,6 @@
 #   3. selected config/talos/components/*.yaml  (feature-gated components)
 #   4. computed integration fragments           (Ansible must compute/enforce these)
 #   5. config/clusters/<cluster>/talos/nodes/*.yaml  (per-node overlays)
-#   6. legacy talos.patches.* raw fragments     (deprecated, kept for compatibility)
 #
 # Numeric prefixes encode the layering order (lower = applied first). Later
 # patches win per Talos strategic-merge docs. Computed integration fragments
@@ -53,7 +52,7 @@
 # ===========================================================================
 # ALL-NODE PATCHES (--config-patch)
 # ===========================================================================
-# Order: 05-base → 06-cluster → 10-components → 20-computed-install → 25-kernel-modules → 30-raw-volumes → 90-user-raw
+# Order: 05-base → 06-cluster → 10-components → 20-computed-install → 25-kernel-modules → 30-raw-volumes
 
 # --- 20-install: computed integration fragment ---
 # Install image placeholder (resolved at bootstrap time by talos_schematic role)
@@ -249,25 +248,10 @@
     path: "{{ config_render_talos_patches_out }}/controlplane/00-network.yaml.j2"
     state: absent
 
-# --- 90-user-raw: legacy talos.patches.all raw fragments ---
-
-- name: Render all-node user-raw patch (90-user-raw.yaml.j2)
-  ansible.builtin.template:
-    src: talos_patches/all/90-user-raw.yaml.j2
-    dest: "{{ config_render_talos_patches_out }}/all/90-user-raw.yaml.j2"
-    mode: "0644"
-  when: config_render_merged.talos.patches.all | default([]) | length > 0
-
-- name: Remove stale all-node user-raw patch when no fragments configured
-  ansible.builtin.file:
-    path: "{{ config_render_talos_patches_out }}/all/90-user-raw.yaml.j2"
-    state: absent
-  when: config_render_merged.talos.patches.all | default([]) | length == 0
-
 # ===========================================================================
 # CONTROL-PLANE PATCHES (--config-patch-control-plane)
 # ===========================================================================
-# Order: 05-base → 06-cluster → 10-components → 15-network → 20-cert-sans → 90-user-raw
+# Order: 05-base → 06-cluster → 10-components → 15-network → 20-cert-sans
 # Network patch at 15: after base/cluster/component overlays so the computed VIP
 # wins over any user overlay that might touch the same network interface.
 # Base and cluster overlays must not override the single-source VIP — later
@@ -461,21 +445,6 @@
     path: "{{ config_render_talos_patches_out }}/controlplane/20-cert-sans.yaml.j2"
     state: absent
   when: config_render_merged.cluster.certSANs.kubernetes | default([]) | length == 0
-
-# --- 90-user-raw: legacy talos.patches.controlplane raw fragments ---
-
-- name: Render control-plane user-raw patch (90-user-raw.yaml.j2)
-  ansible.builtin.template:
-    src: talos_patches/controlplane/90-user-raw.yaml.j2
-    dest: "{{ config_render_talos_patches_out }}/controlplane/90-user-raw.yaml.j2"
-    mode: "0644"
-  when: config_render_merged.talos.patches.controlplane | default([]) | length > 0
-
-- name: Remove stale control-plane user-raw patch when no fragments configured
-  ansible.builtin.file:
-    path: "{{ config_render_talos_patches_out }}/controlplane/90-user-raw.yaml.j2"
-    state: absent
-  when: config_render_merged.talos.patches.controlplane | default([]) | length == 0
 
 # ===========================================================================
 # WORKER PATCHES (--config-patch-worker)

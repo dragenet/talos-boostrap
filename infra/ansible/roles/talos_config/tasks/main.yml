@@ -26,7 +26,7 @@
 
 # --- Discover generated patch templates ---
 # Alphabetical order within each directory; later patches win per Talos docs.
-# The 05/06/10/15/20/90 numbering controls layering: base/cluster overlays first, then components, then computed integration, then user raw last.
+# The 05/06/10/15/20 numbering controls layering: base/cluster overlays first, then components, then computed integration last.
 
 - name: Discover generated all-node patch templates
   ansible.builtin.find:
@@ -293,13 +293,11 @@
 #   all/20-install.yaml.j2                  → machine.install.image (+ optional Talos certSANs)
 #   all/25-kernel-modules.yaml.j2           → device-mapper kernel modules (openebs enabled)
 #   all/30-raw-volumes.yaml.j2              → RawVolumeConfig per storage.volumes (openebs enabled)
-#   all/90-user-raw.yaml.j2                 → raw talos.patches.all fragments (if any)
 #   controlplane/05-base.yaml.j2            → config/talos/base/controlplane.yaml (template-owned)
 #   controlplane/06-cluster.yaml.j2         → config/clusters/<cluster>/talos/controlplane.yaml (user-owned)
 #   controlplane/10-cilium.yaml.j2          → CNI none + proxy disabled (cilium component)
 #   controlplane/15-network.yaml.j2         → VIP on private interface
 #   controlplane/20-cert-sans.yaml.j2       → kube-apiserver certSANs (if configured)
-#   controlplane/90-user-raw.yaml.j2        → raw talos.patches.controlplane fragments (if any)
 #   worker/...                              → worker-scope patches (future: node selectors, etc.)
 #
 # Per-node customisation (hostname, nodeLabels, allowSchedulingOnControlPlanes)

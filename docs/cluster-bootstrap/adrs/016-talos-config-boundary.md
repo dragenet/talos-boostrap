@@ -105,3 +105,9 @@ Ansible chooses which components to include (for example external cloud provider
 - Supersedes ADR-013, which introduced layered Talos config. The layered concept remains, but the boundary between structured helpers and raw fragments is redrawn: Talos-shaped patches are now the default, and custom schema is minimized.
 - Builds on ADR-011 (config compiler): the compiler/orchestrator still loads defaults and cluster config, but now renders fewer generated artifacts and composes more Talos-native inputs.
 - Interacts with ADR-012 (feature catalog): Talos-coupled features still need both a Flux component and a Talos component, but the Talos component is now a Talos-shaped patch fragment under `config/talos/components/` rather than a custom schema translation.
+
+### Implementation (2026-06-29)
+
+- `deviceSelector` now uses `hardwareAddr: '86:00:00:*'` (Hetzner private-network OUI glob), replacing the unstable `interface: eth1` pin. This aligns with Talos upstream guidance to prefer hardware-address over interface-name selectors.
+- `talos.install.*` and `talos.patches.*` transitional schema keys have been removed from `config/defaults/cluster.yaml`, the JSON Schema validation, and the config_render role. Raw Talos escapes now go through `config/clusters/kube1/talos/*.yaml` overlay files only.
+- The network interface fragment (`machine.network.interfaces`) remains a computed integration fragment in Ansible (not hand-authored in the Talos overlay) to preserve the VIP as a single source of truth — the VIP address and endpoint are set by the render compiler, not by user Talos patches.
