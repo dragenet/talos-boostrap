@@ -1,0 +1,14 @@
+---
+# Namespace for cert-manager.
+#
+# Deliberately named cert-manager (not cert-manager-system) because
+# cert-manager's webhook and official documentation expect this
+# namespace name. Deviatiating would break cert-manager's built-in
+# webhook DNS name resolution (cert-manager-webhook.cert-manager.svc).
+#
+# This is a purely Flux-managed component (no pre-Flux Ansible install,
+# no adoption handshake). Flux creates and owns this namespace.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager

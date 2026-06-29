@@ -1,0 +1,5 @@
+---
+# Default yamllint for the envoy-gateway component.
+# No long embedded scripts or deeply nested blocks — standard
+# line-length (80) is sufficient. Extends the default rules.
+extends: default

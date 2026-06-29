@@ -1,0 +1,9 @@
+---
+# Relaxed line-length for the cert-manager component.
+# The HelmRelease values block can contain YAML that benefits from
+# slightly wider columns. All other yamllint rules use the default
+# strict config.
+extends: default
+rules:
+  line-length:
+    max: 120

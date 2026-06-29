@@ -110,6 +110,15 @@
       Got '{{ config_render_merged.features.ingress | default('') }}'
     quiet: true
 
+- name: Validate ingress.gatewayApiChannel is pick-one
+  ansible.builtin.assert:
+    that:
+      - config_render_merged.ingress.gatewayApiChannel in ['standard', 'experimental']
+    fail_msg: >-
+      ingress.gatewayApiChannel must be one of: standard, experimental.
+      Got '{{ config_render_merged.ingress.gatewayApiChannel | default('') }}'
+    quiet: true
+
 - name: Validate cert-dependent features require cert-manager
   ansible.builtin.assert:
     that:

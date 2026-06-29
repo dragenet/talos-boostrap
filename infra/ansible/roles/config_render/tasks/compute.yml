@@ -143,3 +143,42 @@
          if config_render_merged.cluster.endpoint | default('') | length > 0
             and '{{ cluster_vip }}' not in config_render_merged.cluster.endpoint
          else 'https://' ~ config_render_merged.cluster.vip ~ ':6443' }}
+
+# --- config_render_flux_features ---
+# Post-bootstrap Flux-only catalog entries (ADR-017 generated/selected layer).
+# SEPARATE from config_render_bootstrap_pre_flux_components (which is pre-Flux
+# Ansible-managed Helm releases). Each feature here renders a catalog path into
+# flux/infrastructure/controllers/generated/selected/kustomization.yaml.
+#
+# Extension point: future cert-manager, ingress (envoy-gateway/traefik), and
+# hcloud-csi add entries here — NOT in bootstrap_pre_flux_components.
+# openebs → ../../_components/openebs (Talos-coupled: also renders kernel-module
+# and RawVolumeConfig patches, gated on config_render_openebs_enabled).
+- name: Compute post-bootstrap Flux feature list
+  ansible.builtin.set_fact:
+    config_render_flux_features: >-
+      {{
+        (['openebs'] if config_render_merged.features.openebs | default(false) | bool else [])
+        + (['cert-manager'] if config_render_merged.features.certManager | default(false) | bool else [])
+        + (['envoy-gateway']
+           if config_render_merged.features.ingress == 'envoy-gateway' else [])
+      }}
+
+# --- Storage volume derived facts ---
+# config_render_storage_raw_volumes: only volumes with type == 'raw' (drives
+# RawVolumeConfig render; on kube1 today all volumes are raw).
+# config_render_openebs_enabled: convenience bool gating kernel-module patch
+# + RawVolumeConfig + Flux catalog entry.
+- name: Compute storage raw volumes list
+  ansible.builtin.set_fact:
+    config_render_storage_raw_volumes: >-
+      {{
+        config_render_merged.storage.volumes | default([])
+        | selectattr('type', 'equalto', 'raw')
+        | list
+      }}
+
+- name: Compute openebs enabled flag
+  ansible.builtin.set_fact:
+    config_render_openebs_enabled: >-
+      {{ config_render_merged.features.openebs | default(false) | bool }}

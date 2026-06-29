@@ -169,6 +169,11 @@ features:
   openebs: false
   hcloudCsi: false
 
+# Gateway API CRD channel: standard | experimental (ADR-004 default).
+# Determines which upstream Gateway API CRD manifest the flux catalog selects.
+ingress:
+  gatewayApiChannel: standard
+
 # Storage volume definitions (ADR-013). User-owned list — replaces defaults.
 storage:
   volumes: []

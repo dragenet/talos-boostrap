@@ -1,0 +1,47 @@
+---
+# Envoy Gateway HelmRelease.
+#
+# This is a purely Flux-managed component — no pre-Flux Ansible
+# install, no adoption handshake. Flux installs the chart from
+# scratch when the catalog entry is included.
+#
+# Namespace: envoy-gateway-system (non-CSI infra convention).
+#
+# CRDs are SKIPPED — bundled Gateway API CRDs are disabled because
+# they come from the separate gateway-api/ catalog base. This avoids
+# CRD ownership conflicts and keeps the CRD lifecycle independent
+# from the controller lifecycle.
+#
+# dependsOn ensures the gateway-api CRDs HelmRelease is ready before
+# installing the envoy-gateway controller. This avoids "no matches for
+# kind GatewayClass" on first bootstrap.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: envoy-gateway
+  namespace: envoy-gateway-system
+spec:
+  dependsOn:
+    - name: envoy-gateway-crds
+      namespace: envoy-gateway-system
+  interval: 1h
+  releaseName: envoy-gateway
+  targetNamespace: envoy-gateway-system
+  install:
+    createNamespace: true  # belt-and-suspenders with the manual Namespace
+    crds: Skip             # CRDs come from gateway-api/ catalog base
+  upgrade:
+    crds: Skip             # CRDs come from gateway-api/ catalog base
+  values:
+    crds:
+      gatewayAPI:
+        safeUpgradePolicy:
+          enabled: false   # CRDs owned by gateway-api/ catalog base
+  chart:
+    spec:
+      chart: gateway-helm
+      version: v1.8.1  # pin: released 2026-06-05
+      sourceRef:
+        kind: HelmRepository
+        name: envoy-gateway
+        namespace: envoy-gateway-system

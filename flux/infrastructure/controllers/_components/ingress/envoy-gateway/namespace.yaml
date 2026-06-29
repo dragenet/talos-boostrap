@@ -1,0 +1,15 @@
+---
+# Namespace for Envoy Gateway.
+#
+# Dedicated envoy-gateway-system per the non-CSI infra convention
+# (cilium-system, hcloud-ccm-system). Envoy Gateway is not a CSI
+# driver — it is a Kubernetes Gateway API implementation that runs
+# as a controller + data-plane proxy (Envoy).
+#
+# This is a purely Flux-managed component (no pre-Flux Ansible
+# install, no adoption handshake). Flux creates and owns this
+# namespace.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: envoy-gateway-system

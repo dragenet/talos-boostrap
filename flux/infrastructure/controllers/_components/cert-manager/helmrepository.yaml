@@ -1,0 +1,19 @@
+---
+# HelmRepository for the cert-manager Helm chart.
+#
+# Uses the OCI registry (quay.io/jetstack/charts). Flux with type: oci
+# appends chart.spec.chart (cert-manager) to the URL, resolving to
+# oci://quay.io/jetstack/charts/cert-manager. This is the source of truth
+# published immediately upon release. The legacy HTTP repo
+# (https://charts.jetstack.io) is updated a few hours later.
+#
+# Lives in the cert-manager namespace alongside the HelmRelease it serves.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: cert-manager
+  namespace: cert-manager
+spec:
+  interval: 1h
+  type: oci
+  url: oci://quay.io/jetstack/charts

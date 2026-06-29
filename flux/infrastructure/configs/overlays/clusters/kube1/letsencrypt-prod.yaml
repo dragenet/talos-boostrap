@@ -1,0 +1,27 @@
+---
+# ClusterIssuer for Let's Encrypt production ACME (rate-limited real certs).
+# This is a user-owned resource for kube1. The Cloudflare API token Secret
+# (cloudflare-api-token/api-token) must be provisioned out-of-band — DNS-01
+# challenges will NOT solve until it exists.
+#
+# Certificates are issued with 90-day validity and auto-renewed by cert-manager
+# 30 days before expiry. Production has strict rate limits (50 certs/week per
+# registered domain) — use letsencrypt-staging for testing.
+#
+# Email is optional; fill in spec.acme.email for expiry/revocation notices.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: ""
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: cloudflare-api-token
+              key: api-token

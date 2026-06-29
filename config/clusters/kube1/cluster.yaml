@@ -131,10 +131,13 @@ cloud_controller_manager:
   enabled: auto
 
 features:
-  certManager: false
-  ingress: none
+  certManager: true
+  ingress: envoy-gateway
   openebs: false
   hcloudCsi: false
+
+ingress:
+  gatewayApiChannel: standard
 
 storage:
   volumes: []

@@ -2,21 +2,31 @@
 # Render Flux generated/selected kustomization from the merged cluster.yaml
 # features and provider selection (ADR-010, ADR-012, ADR-017).
 #
-# Maps component names in config_render_bootstrap_pre_flux_components (computed
-# by compute.yml) to catalog paths under _components/. The generated/selected/
-# kustomization is the render-owned layer in the three-tier overlay model
-# (ADR-017); the top-level controllers/kustomization.yaml references it through
-# overlays/clusters/{{ config_cluster }} → overlays/common → generated/selected.
+# Maps TWO computed lists to catalog paths under _components/:
+#   1. config_render_bootstrap_pre_flux_components (pre-Flux Ansible-managed
+#      Helm releases: cilium, hcloud-ccm). Computed by compute.yml from
+#      cni.name + cloud_controller_manager.enabled + provider.name.
+#   2. config_render_flux_features (post-bootstrap Flux-only catalog entries:
+#      openebs, future cert-manager/ingress/hcloud-csi). Computed by
+#      compute.yml from features.* toggles.
+#
+# The generated/selected/ kustomization is the render-owned layer in the
+# four-tier overlay model (ADR-017); the top-level controllers/kustomization.yaml
+# references it through overlays/clusters/{{ config_cluster }} → overlays/common
+# → generated/selected.
 #
 # Catalog path contract (from generated/selected/, _components/ is ../../):
-#   cilium     → ../../_components/cilium
-#   hcloud-ccm → ../../_components/providers/hcloud/ccm
+#   Pre-Flux:
+#     cilium     → ../../_components/cilium
+#     hcloud-ccm → ../../_components/providers/hcloud/ccm
+#   Post-bootstrap (Flux-only):
+#     openebs    → ../../_components/openebs
 #
-# For the empty set (cni.name=none and CCM disabled), resources: [] is emitted
-# explicitly rather than YAML null so Kustomize and callers can iterate without
-# a NoneType guard.
+# For the empty set (no pre-Flux components and no flux features), resources: []
+# is emitted explicitly rather than YAML null so Kustomize and callers can
+# iterate without a NoneType guard.
 
-# --- Map component names to catalog paths ---
+# --- Map component and feature names to catalog paths ---
 # config_render_output_base is set by render_ansible.yml (runs before this).
 
 - name: Compute Flux selected resource paths
@@ -25,6 +35,11 @@
       {{
         (['../../_components/cilium'] if 'cilium' in config_render_bootstrap_pre_flux_components else [])
         + (['../../_components/providers/hcloud/ccm'] if 'hcloud-ccm' in config_render_bootstrap_pre_flux_components else [])
+        + (['../../_components/openebs'] if 'openebs' in config_render_flux_features else [])
+        + (['../../_components/cert-manager'] if 'cert-manager' in config_render_flux_features else [])
+        + (['../../_components/gateway-api/' ~ config_render_merged.ingress.gatewayApiChannel]
+           if 'envoy-gateway' in config_render_flux_features else [])
+        + (['../../_components/ingress/envoy-gateway'] if 'envoy-gateway' in config_render_flux_features else [])
       }}
 
 - name: Set Flux controllers selected output directory

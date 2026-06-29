@@ -1,0 +1,23 @@
+---
+# _components/cert-manager/ — cert-manager controller.
+#
+# Owner: Template maintainers. Edit only when updating the cert-manager
+# adoption contract; cluster-specific overrides go through
+# ../../overlays/clusters/kube1/ (user-owned patches).
+#
+# Installs cert-manager into the cert-manager namespace. This is the
+# controller only — no Issuers, no DNS configuration, no Secrets. The
+# catalog entry is CA/DNS-agnostic; cluster-specific issuers and
+# Certificate resources are defined elsewhere.
+#
+# This is a purely Flux-managed component — no pre-Flux Ansible install,
+# no adoption handshake. Flux installs the chart from scratch when the
+# catalog entry is first included in generated/selected/kustomization.yaml.
+#
+# Deployment order: Namespace → HelmRepository → HelmRelease.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - helmrepository.yaml
+  - helmrelease.yaml

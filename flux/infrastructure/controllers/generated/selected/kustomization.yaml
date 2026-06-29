@@ -8,3 +8,6 @@ kind: Kustomization
 resources:
   - ../../_components/cilium
   - ../../_components/providers/hcloud/ccm
+  - ../../_components/cert-manager
+  - ../../_components/gateway-api/standard
+  - ../../_components/ingress/envoy-gateway

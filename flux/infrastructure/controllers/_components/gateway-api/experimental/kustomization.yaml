@@ -1,0 +1,24 @@
+---
+# _components/gateway-api/experimental/ — Gateway API experimental-channel CRDs.
+#
+# Owner: Template maintainers. Edit only when updating the Gateway API
+# CRD adoption contract; cluster-specific overrides go through
+# ../../overlays/clusters/kube1/ (user-owned patches).
+#
+# Installs Gateway API CRDs (experimental channel) and Envoy Gateway CRDs
+# via the envoyproxy/gateway-crds-helm OCI chart. The CRDs are a hard
+# dependency for the Envoy Gateway controller and any Gateway API
+# resources (GatewayClass, Gateway, HTTPRoute, etc.).
+#
+# The namespace (envoy-gateway-system) is declared via namespace.yaml
+# as belt-and-suspenders alongside the HelmRelease's install.createNamespace.
+#
+# Only difference from standard/: crds.gatewayAPI.channel is "experimental".
+#
+# Deployment order: Namespace → HelmRepository → HelmRelease.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - helmrepository.yaml
+  - helmrelease.yaml

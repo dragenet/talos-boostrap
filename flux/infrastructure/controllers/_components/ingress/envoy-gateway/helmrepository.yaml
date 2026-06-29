@@ -1,0 +1,20 @@
+---
+# HelmRepository for the Envoy Gateway OCI chart.
+#
+# Envoy Gateway charts are distributed exclusively as OCI artifacts
+# at oci://docker.io/envoyproxy. Flux with type: oci appends
+# chart.spec.chart (gateway-helm) to the URL, resolving to
+# oci://docker.io/envoyproxy/gateway-helm — no traditional HTTP Helm
+# repo. Flux OCI support requires flux 2.0+ which is already the
+# minimum for this repo.
+#
+# Lives in envoy-gateway-system alongside the HelmRelease it serves.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: envoy-gateway
+  namespace: envoy-gateway-system
+spec:
+  type: oci
+  interval: 1h
+  url: oci://docker.io/envoyproxy

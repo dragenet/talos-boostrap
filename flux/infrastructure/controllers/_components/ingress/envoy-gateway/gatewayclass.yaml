@@ -1,0 +1,21 @@
+---
+# GatewayClass for Envoy Gateway.
+#
+# This GatewayClass binds the Gateway API resources (Gateway,
+# HTTPRoute, etc.) to the Envoy Gateway controller running in this
+# cluster. The controllerName matches the default controller name
+# configured by the envoy-gateway Helm chart.
+#
+# Controller-level binding included in this slice — downstream
+# Gateway and route resources (HTTPRoute, etc.) live in the apps/
+# layer and reference this GatewayClass by name.
+#
+# This resource depends on the envoy-gateway HelmRelease being
+# healthy (the CRDs from gateway-api/ + the envoy-gateway controller
+# must be Running before GatewayClass reconciliation succeeds).
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy-gateway
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller

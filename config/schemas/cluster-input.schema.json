@@ -145,6 +145,17 @@
         "hcloudCsi": { "type": "boolean" }
       }
     },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gatewayApiChannel": {
+          "type": "string",
+          "enum": ["standard", "experimental"],
+          "default": "standard"
+        }
+      }
+    },
     "storage": {
       "type": "object",
       "additionalProperties": false,

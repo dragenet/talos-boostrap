@@ -1,0 +1,24 @@
+---
+# _components/ingress/envoy-gateway/ — Envoy Gateway controller catalog entry.
+#
+# Owner: Template maintainers. Edit only when updating the Envoy Gateway
+# adoption contract; cluster-specific overrides go through
+# ../../overlays/clusters/kube1/ (user-owned patches).
+#
+# Installs Envoy Gateway into the dedicated envoy-gateway-system namespace
+# (non-CSI infra convention). This is a purely Flux-managed component — no
+# pre-Flux Ansible install, no adoption handshake.
+#
+# CRDs are skipped: bundled Gateway API CRDs are disabled (install.crds:
+# Skip, upgrade.crds: Skip) because they come from the separate
+# gateway-api/ catalog base.
+#
+# Deployment order: HelmRepository → HelmRelease → GatewayClass.
+# The envoy-gateway-system Namespace is declared by the gateway-api/
+# catalog base (CRD dependency); envoy-gateway dependsOn: gateway-crds.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - helmrepository.yaml
+  - helmrelease.yaml
+  - gatewayclass.yaml

@@ -1,0 +1,45 @@
+---
+# cert-manager controller HelmRelease.
+#
+# Installs the cert-manager controller only — no Issuers, no DNS
+# configuration, no Secrets. This catalog entry is CA/DNS-agnostic
+# and expects cluster-specific issuers/Certificates to be defined
+# elsewhere (typically in flux/infrastructure/configs/ or flux/apps/).
+#
+# This is a purely Flux-managed component — no pre-Flux Ansible install,
+# no adoption handshake. Flux installs the chart from scratch when the
+# catalog entry is first included in generated/selected/kustomization.yaml.
+#
+# Namespace: cert-manager (deliberate — matches the upstream default;
+# the webhook uses cert-manager-webhook.cert-manager.svc internally).
+#
+# CRDs are managed by the Helm chart (crds.enabled: true) and kept on
+# uninstall (crds.keep: true). The deprecated installCRDs key maps to
+# crds.enabled internally — only the current key is used here.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cert-manager
+  namespace: cert-manager
+spec:
+  interval: 1h
+  releaseName: cert-manager
+  targetNamespace: cert-manager
+  install:
+    createNamespace: true
+  chart:
+    spec:
+      chart: cert-manager
+      version: 1.20.3  # pin: latest stable, released 2026-06-25
+      sourceRef:
+        kind: HelmRepository
+        name: cert-manager
+        namespace: cert-manager
+  values:
+    # ----- CRDs -----
+    # cert-manager bundles its CRDs in the chart. Install them via Helm
+    # so Flux manages the lifecycle. Keep them on uninstall to prevent
+    # data loss if the HelmRelease is accidentally deleted.
+    crds:
+      enabled: true
+      keep: true
