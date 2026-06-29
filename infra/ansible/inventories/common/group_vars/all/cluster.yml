@@ -20,7 +20,7 @@ kubernetes_version: v1.36.0
 # here when you reach the cluster through another address — e.g. a Tailscale IP,
 # a Cloudflare Tunnel hostname, or an internal DNS alias.
 cluster_talos_cert_sans: []
-cluster_k8s_cert_sans: []
+cluster_k8s_cert_sans: [188.245.209.69, 46.224.155.183, 46.225.77.49]
 
 # Lookup table from full node_role name → short code used only in hostnames.
 # Full names are used everywhere else: Ansible groups, provider labels,

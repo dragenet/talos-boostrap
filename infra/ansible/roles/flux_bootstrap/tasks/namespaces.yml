@@ -19,6 +19,12 @@
       kind: Namespace
       metadata:
         name: cilium-system
+        labels:
+          # Talos enforces PSA baseline cluster-wide (kube-system exempted only).
+          # Cilium requires privileged: hostNetwork, hostPath, SYS_ADMIN, etc.
+          # Namespace-level labels override the cluster-wide default (PSA spec §4).
+          pod-security.kubernetes.io/enforce: privileged
+          pod-security.kubernetes.io/enforce-version: latest
   when: "'cilium' in flux_bootstrap_components"
 
 - name: Ensure hcloud-ccm-system namespace exists for hcloud CCM
@@ -30,4 +36,9 @@
       kind: Namespace
       metadata:
         name: hcloud-ccm-system
+        labels:
+          # CCM requires hostNetwork on its pod — must be privileged for the
+          # same reason as cilium-system above.
+          pod-security.kubernetes.io/enforce: privileged
+          pod-security.kubernetes.io/enforce-version: latest
   when: "'hcloud-ccm' in flux_bootstrap_components"

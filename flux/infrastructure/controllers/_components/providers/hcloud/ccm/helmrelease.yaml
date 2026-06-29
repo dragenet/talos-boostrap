@@ -44,9 +44,16 @@ spec:
         name: hcloud
         namespace: hcloud-ccm-system
   values:
-    # ----- Networking (ADR-005) -----
-    # Route controller is not needed — Cilium uses VXLAN tunnel.
-    # Load-balancer controller is also unused (ingress is host-network
-    # Envoy Gateway per ADR-004).
+    # ----- Networking (ADR-005 / ADR-002) -----
+    # networking.enabled: true so the chart sets HCLOUD_NETWORK from Secret
+    # "hcloud" key "network". Without it the node controller can only see
+    # public IPs from the Hetzner API and cannot match nodes that report
+    # their private IP (10.0.0.x) as their sole InternalIP — causing the
+    # "provided node ip is not valid" error and leaving the
+    # node.cloudprovider.kubernetes.io/uninitialized taint permanently set.
+    # The CCM route controller also runs but is harmless: Cilium VXLAN
+    # intercepts pod traffic via eBPF before OS routing is consulted, so
+    # Hetzner-managed routes are never used (ADR-005 removes the dependency,
+    # not the ability to coexist).
     networking:
-      enabled: false
+      enabled: true

@@ -140,12 +140,19 @@ flux_bootstrap_hcloud_ccm_secret_name: hcloud
 flux_bootstrap_hcloud_ccm_timeout: 5m
 
 # Helm values for the hcloud CCM install — matches the Flux HelmRelease.
-# networking.enabled: false because Cilium uses VXLAN tunnel, so the
-# CCM route controller is not needed (ADR-005). The token is read from
-# Secret "hcloud" key "token" per the chart's default env valueFrom.
+# networking.enabled: true so the chart sets HCLOUD_NETWORK from the
+# Secret "hcloud" key "network" — required for the node controller to
+# resolve nodes by their private IPs (10.0.0.x). Without it the CCM
+# can only match public IPs and fails to initialize nodes.
+# The route controller also runs but is harmless — Cilium VXLAN intercepts
+# pod traffic via eBPF before OS routing, so CCM-managed Hetzner routes
+# are never consulted (ADR-005 rationale still holds: VXLAN removes the
+# *dependency* on CCM routes, not the ability to coexist with them).
+# clusterCIDR left at chart default (10.244.0.0/16); Talos assigns /24
+# per-node slices from this pool.
 flux_bootstrap_hcloud_ccm_values:
   networking:
-    enabled: false
+    enabled: true
 
 # --- Flux bootstrap ---
 # Non-secret auth variables are sourced from the generated flux.yml group_vars

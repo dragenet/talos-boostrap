@@ -44,7 +44,12 @@ cluster:
     #     - 100.64.0.10         # Tailscale IP used as the kubectl endpoint
     #     - k8s.ts.example.com
     talos: []
-    kubernetes: []
+    kubernetes:
+      # Public node IPs — allows kubectl from the local machine while the
+      # cluster has no external LB or VPN. The VIP (10.0.0.10) is private-only.
+      - 188.245.209.69   # kube1-hb1
+      - 46.224.155.183   # kube1-hb2
+      - 46.225.77.49     # kube1-hb3
   nodeRoleShort:
     controlplane: cp
     hybrid: hb
@@ -54,41 +59,29 @@ provider:
   name: hcloud
 
 flux:
-  repoUrl: ''
+  # repoUrl is optional for provider-deploy-key mode — flux bootstrap github
+  # constructs the SSH URL from auth.owner + auth.repository. Set it anyway
+  # as the canonical display / source-of-truth reference.
+  repoUrl: 'ssh://git@github.com/dragenet/infra-kube1.git'
   repoBranch: master
   path: ./flux/clusters/kube1
 
-  # ── Flux bootstrap authentication (new section) ─────────────────────────────
+  # ── Flux bootstrap authentication ───────────────────────────────────────────
   #
-  # All auth fields have provider-agnostic defaults in config/defaults/cluster.yaml.
-  # Override only what differs for kube1. Key decisions:
-  #
-  #   provider: generic | github | bitbucket-server
-  #     generic           → flux bootstrap git (works with any Git host)
-  #     github            → flux bootstrap github (deploy-key creation via PAT)
-  #     bitbucket-server  → flux bootstrap bitbucket-server (Server/DC only)
-  #
-  #   auth.mode: provider-deploy-key | https-token | ssh-private-key
-  #     provider-deploy-key → API token creates deploy key; token NOT stored in-cluster
-  #     https-token         → HTTPS token auth; token IS stored in Flux source secret
-  #     ssh-private-key     → existing SSH key; private key IS stored in Flux source secret
-  #
-  # If you keep the defaults (generic + ssh-private-key), flux bootstrap git uses
-  # repoUrl + privateKeyFile to connect. Fill repoUrl with an SSH URL like:
-  #   ssh://git@github.com/your-org/kube1.git
-  # and set flux.auth.privateKeyFile to the local key path.
-  #
-  # For GitHub deploy-key mode:
-  #   provider: github
-  #   auth:
-  #     mode: provider-deploy-key
-  #     owner: your-github-org
-  #     repository: infra-kube1
-  #   # Then supply flux_auth_token (GITHUB_TOKEN PAT) via SOPS:
-  #   # infra/ansible/inventories/common/group_vars/all/flux.sops.yaml
-  #
-  # SECRETS: flux_auth_token and flux_auth_private_key_passphrase are never
-  # rendered from config/ — they live in SOPS-encrypted inventory group vars.
+  # GitHub provider-deploy-key mode:
+  #   flux bootstrap github uses a GitHub PAT (GITHUB_TOKEN) to create a
+  #   read-only deploy key on the repo via API. The PAT is NOT stored in the
+  #   cluster — only the generated SSH key material lands in the Flux source
+  #   secret. Supply flux_auth_token in:
+  #     infra/ansible/inventories/common/group_vars/all/flux.sops.yaml
+  provider: github
+  auth:
+    mode: provider-deploy-key
+    owner: dragenet
+    repository: infra-kube1
+    # readWriteKey: false (default) — Flux only needs to pull after bootstrap;
+    # the PAT handles the initial push of flux-system manifests.
+    readWriteKey: false
 
 talos:
   version: v1.13.3

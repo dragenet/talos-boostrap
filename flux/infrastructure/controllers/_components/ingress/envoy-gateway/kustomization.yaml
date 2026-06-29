@@ -21,4 +21,11 @@ kind: Kustomization
 resources:
   - helmrepository.yaml
   - helmrelease.yaml
-  - gatewayclass.yaml
+  # gatewayclass.yaml is intentionally absent here.
+  # GatewayClass requires the gateway.networking.k8s.io CRDs installed by
+  # the gateway-api HelmRelease in this same kustomization. Flux dry-runs all
+  # resources together before applying any HelmRelease, so a GatewayClass here
+  # would always fail dry-run on first bootstrap ("no matches for kind
+  # GatewayClass"). The GatewayClass lives in infrastructure-configs instead,
+  # which dependsOn infrastructure-controllers and only reconciles once all
+  # HelmReleases here are Ready and the CRDs exist.

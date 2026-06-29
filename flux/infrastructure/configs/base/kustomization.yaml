@@ -4,4 +4,12 @@
 # Owned by: template catalog (human-authored, not generated).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-resources: []
+resources:
+  # GatewayClass is placed here (infrastructure-configs) rather than in the
+  # envoy-gateway controllers component because Flux dry-runs all resources in
+  # a kustomization together before applying any HelmRelease. A GatewayClass
+  # in infrastructure-controllers would fail dry-run ("no matches for kind
+  # GatewayClass") since the gateway-api CRD HelmRelease hasn't run yet.
+  # infrastructure-configs dependsOn infrastructure-controllers, so by the time
+  # this reconciles the Gateway API CRDs are guaranteed to exist.
+  - envoy-gateway-gatewayclass.yaml

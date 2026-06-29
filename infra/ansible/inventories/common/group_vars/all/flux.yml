@@ -7,16 +7,16 @@
 # flux_auth_private_key_passphrase are SOPS-backed and loaded from
 # encrypted inventory group vars (e.g. inventories/common/group_vars/all/flux.sops.yaml).
 
-flux_repo_url: ''
+flux_repo_url: 'ssh://git@github.com/dragenet/infra-kube1.git'
 flux_repo_branch: master
 flux_path: ./flux/clusters/kube1
 
 # --- Flux bootstrap auth ---
-flux_provider: generic
-flux_auth_mode: ssh-private-key
+flux_provider: github
+flux_auth_mode: provider-deploy-key
 flux_auth_username: git
-flux_auth_owner: ''
-flux_auth_repository: ''
+flux_auth_owner: 'dragenet'
+flux_auth_repository: 'infra-kube1'
 flux_auth_hostname: ''
 flux_auth_personal: false
 flux_auth_private: true

@@ -37,6 +37,9 @@
       type: Opaque
       stringData:
         token: "{{ hcloud_token }}"
+        # network key is required by the chart when networking.enabled: true
+        # so the node controller can resolve private IPs via HCLOUD_NETWORK.
+        network: "{{ hcloud_private_network_name }}"
   no_log: true  # hcloud_token is a secret — never appear in output
 
 # --- Install hcloud CCM Helm release ---
@@ -104,7 +107,7 @@
       - get
       - nodes
       - -o
-      - go-template={{ range .items }}{{ range .spec.taints }}{{ .key }}{{ "\n" }}{{ end }}{{ end }}
+      - !unsafe 'go-template={{ range .items }}{{ range .spec.taints }}{{ .key }}{{ "\n" }}{{ end }}{{ end }}'
   register: flux_bootstrap_ccm_taints
   changed_when: false
   retries: 12
