@@ -21,22 +21,19 @@ metadata:
   name: envoy-gateway
   namespace: envoy-gateway-system
 spec:
-  dependsOn:
-    - name: envoy-gateway-crds
-      namespace: envoy-gateway-system
   interval: 1h
   releaseName: envoy-gateway
   targetNamespace: envoy-gateway-system
   install:
     createNamespace: true  # belt-and-suspenders with the manual Namespace
-    crds: Skip             # CRDs come from gateway-api/ catalog base
+    crds: Skip             # CRDs pre-applied from gateway-api/ catalog base (raw YAML)
   upgrade:
-    crds: Skip             # CRDs come from gateway-api/ catalog base
+    crds: Skip             # CRDs pre-applied from gateway-api/ catalog base (raw YAML)
   values:
     crds:
       gatewayAPI:
         safeUpgradePolicy:
-          enabled: false   # CRDs owned by gateway-api/ catalog base
+          enabled: false   # CRDs managed by gateway-api/ catalog base
   chart:
     spec:
       chart: gateway-helm

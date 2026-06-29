@@ -1,22 +1,22 @@
 ---
-# _components/gateway-api/standard/ — Gateway API standard-channel CRDs.
+# _components/gateway-api/standard/ — Gateway API standard-channel CRDs + envoy-gateway CRDs.
 #
 # Owner: Template maintainers. Edit only when updating the Gateway API
 # CRD adoption contract; cluster-specific overrides go through
 # ../../overlays/clusters/kube1/ (user-owned patches).
 #
-# Installs Gateway API CRDs (standard channel) and Envoy Gateway CRDs
-# via the envoyproxy/gateway-crds-helm OCI chart. The CRDs are a hard
-# dependency for the Envoy Gateway controller and any Gateway API
-# resources (GatewayClass, Gateway, HTTPRoute, etc.).
+# The CRDs are committed as raw YAML (gateway-api-crds.yaml, rendered from
+# oci://docker.io/envoyproxy/gateway-crds-helm@v1.8.1) rather than managed
+# via a HelmRelease because the chart exceeds Helm's 1 MB Secret storage
+# limit ("data: Too long: may not be more than 1048576 bytes"). Committing
+# rendered CRDs is the recommended GitOps pattern for large CRD bundles:
+# pinned, auditable, diff-visible on upgrades, zero network dependency at
+# reconcile time.
 #
-# The namespace (envoy-gateway-system) is declared via namespace.yaml
-# as belt-and-suspenders alongside the HelmRelease's install.createNamespace.
-#
-# Deployment order: Namespace → HelmRepository → HelmRelease.
+# The namespace (envoy-gateway-system) is declared via namespace.yaml.
+# Deployment order: Namespace → CRDs.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - namespace.yaml
-  - helmrepository.yaml
-  - helmrelease.yaml
+  - gateway-api-crds.yaml
