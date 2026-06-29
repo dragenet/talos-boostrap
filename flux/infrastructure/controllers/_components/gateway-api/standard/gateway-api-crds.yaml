@@ -1,10 +1,4 @@
-# Source: oci://docker.io/envoyproxy/gateway-crds-helm
-# Chart: gateway-crds-helm
-# Version: v1.8.1
-# Rendered: 2026-06-29T17:38:42Z
----
-Pulled: docker.io/envoyproxy/gateway-crds-helm:v1.8.1
-Digest: sha256:8ac15708adafa6660f77539b33bf215144ea29352c9a17127c1770d96eeaa661
+# Source: oci://docker.io/envoyproxy/gateway-crds-helm v1.8.1 — rendered 2026-06-29T17:38:42Z
 ---
 # Source: gateway-crds-helm/templates/generated/gateway.envoyproxy.io_backends.yaml
 apiVersion: apiextensions.k8s.io/v1
