@@ -7,3 +7,8 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: cilium-system
+  labels:
+    # Talos enforces PSA baseline cluster-wide (only kube-system exempted).
+    # Cilium requires privileged: hostNetwork, hostPath, SYS_ADMIN, etc.
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
