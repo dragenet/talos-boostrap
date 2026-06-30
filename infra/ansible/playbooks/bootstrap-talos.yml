@@ -34,3 +34,23 @@
   roles:
     - role: talos_config
       tags: talos_config
+
+- name: Patch kubeconfig server URL for external access (provider-specific)
+  hosts: localhost
+  gather_facts: false
+  # No-op when talos_kubeconfig_server_override is not set (e.g. manual provider).
+  # Hetzner Cloud sets this in inventories/providers/hcloud/group_vars/all/kubeconfig.yml
+  # to replace the private VIP endpoint with a public node IP. Other providers
+  # (VPN, manual, LB) can set their own value or leave the variable unset.
+  tasks:
+    - name: Override kubeconfig server URL for provider external access
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - config
+          - set-cluster
+          - "{{ cluster_name }}"
+          - "--server={{ talos_kubeconfig_server_override }}"
+          - "--kubeconfig={{ talos_secrets_dir }}/kubeconfig"
+      when: talos_kubeconfig_server_override is defined and talos_kubeconfig_server_override
+      changed_when: true
