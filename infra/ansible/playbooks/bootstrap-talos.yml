@@ -52,5 +52,5 @@
           - "{{ cluster_name }}"
           - "--server={{ talos_kubeconfig_server_override }}"
           - "--kubeconfig={{ talos_secrets_dir }}/kubeconfig"
-      when: talos_kubeconfig_server_override is defined and talos_kubeconfig_server_override
+      when: (talos_kubeconfig_server_override | default('')) | length > 0
       changed_when: true
