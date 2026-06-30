@@ -14,7 +14,7 @@ per-cluster configs overlay:
 | Catalog entry | Namespace | What it installs |
 |---|---|---|
 | `_components/cert-manager/` | `cert-manager` | cert-manager chart `1.20.3` from `oci://quay.io/jetstack/charts` (controller only — no Issuers, no Secrets, CA/DNS-agnostic) |
-| `_components/gateway-api/standard/` (or `experimental/`) | `envoy-gateway-system` | `gateway-crds-helm` chart v1.8.1 — Gateway API CRDs (channel picked) + Envoy Gateway CRDs |
+| `_components/gateway-api/standard/` (or `experimental/`) | `envoy-gateway-system` | Raw CRD YAML committed in-repo — Gateway API CRDs (channel picked) + Envoy Gateway CRDs |
 | `_components/ingress/envoy-gateway/` | `envoy-gateway-system` | `gateway-helm` chart v1.8.1 from `oci://docker.io/envoyproxy` (bundled Gateway API CRDs **disabled**), plus the `GatewayClass envoy-gateway` resource |
 | `flux/infrastructure/configs/overlays/clusters/kube1/` (user-owned) | `cert-manager` | Two `ClusterIssuer` resources (`letsencrypt-staging`, `letsencrypt-prod`, ACME + Cloudflare DNS-01) — reference the token Secret **by name** |
 
@@ -24,9 +24,9 @@ The render compiler selects the three catalog entries when
 `gateway-api/experimental` from `ingress.gatewayApiChannel` (default
 `standard`). The `generated/selected/kustomization.yaml` includes
 `../../_components/cert-manager`, `../../_components/gateway-api/<channel>`,
-and `../../_components/ingress/envoy-gateway` in that order — Gateway API CRDs
-are emitted **before** the Envoy Gateway controller so the `dependsOn:
-envoy-gateway-crds` ordering inside the controller HelmRelease can resolve.
+and `../../_components/ingress/envoy-gateway` in that order — the CRD YAML is
+applied before the Envoy Gateway controller so the GatewayClass and routes
+have their CRDs available by the time the controller reconciles.
 
 > **Why this is pure-Flux (not pre-Flux Ansible):** the cert-manager + EG
 > controllers have no Talos-coupled lifecycle (no node taints to clear, no
@@ -61,9 +61,9 @@ controller version is **not** changed by the channel switch — the channel knob
 only selects which CRD manifest the controller reconciles against.
 
 > **Channel + controller version coupling:** the EG chart `v1.8.1` is pinned
-> to match the Gateway API version the `gateway-crds-helm` chart at `v1.8.1`
-> ships. If you bump the EG controller chart, you MUST bump the CRD chart to
-> the same release line. A mismatch breaks GatewayClass / route
+> to match the Gateway API / Envoy Gateway CRDs rendered into the repo. If you
+> bump the EG controller chart, you MUST refresh the committed CRD YAML from
+> the matching upstream release line. A mismatch breaks GatewayClass / route
 > reconciliation silently (missing fields, dropped resources).
 
 ## Post-bootstrap verification
@@ -81,9 +81,7 @@ kubectl -n cert-manager get pods
 
 # Envoy Gateway: controller pod Ready
 kubectl -n envoy-gateway-system get pods
-# Expected: envoy-gateway-<hash> 1/1 Running, plus the
-# envoy-gateway-crds HelmRelease's job pod (envoy-gateway-crds-helm-install)
-# which applies the CRDs once and exits.
+# Expected: envoy-gateway-<hash> 1/1 Running.
 
 # Gateway API CRDs registered
 kubectl get crds | grep gateway.networking.k8s.io

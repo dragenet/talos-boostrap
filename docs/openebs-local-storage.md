@@ -18,8 +18,9 @@ single boot NVMe — the same 20GB partition shape backs all three node-local VG
 
 ## How it works
 
-1. **Talos `RawVolumeConfig`** carves a 20GB raw partition from the system
-   disk (the boot NVMe). It surfaces at the stable symlink
+1. **Talos `VolumeConfig` + `RawVolumeConfig`** first caps EPHEMERAL so the
+   system disk keeps free space, then carves a 20GB raw partition from the
+   remaining space (the boot NVMe). The raw volume surfaces at the stable symlink
    `/dev/disk/by-partlabel/r-openebs-lvm` — the partlabel is auto-derived as
    `r-<name>` from the volume `name: openebs-lvm`. Source:
    `infra/talos/patches/generated/all/30-raw-volumes.yaml.j2` (render-generated,
@@ -40,6 +41,8 @@ single boot NVMe — the same 20GB partition shape backs all three node-local VG
    The init container is injected via a Flux HelmRelease `spec.postRenderers`
    kustomize strategic-merge patch — the upstream `lvm-localpv` chart exposes
    no native `initContainers` hook.
+   If the partlabel is missing, the usual cause is that Talos never got the
+   capped EPHEMERAL layout on first boot; rebuild the node, do not just reboot.
 4. **The OpenEBS lvm-localpv CSI provisioner** creates LVM logical volumes from
    `openebs-vg` for PVCs that use StorageClass `openebs-lvm-localpv`
    (thin-provisioned, `WaitForFirstConsumer`, `allowVolumeExpansion: true`).
@@ -94,7 +97,7 @@ Review the git diff. New generated artifacts:
 | File | Contents |
 |---|---|
 | `infra/talos/patches/generated/all/25-kernel-modules.yaml.j2` | `machine.kernel.modules` listing `dm_mod`, `dm_snapshot`, `dm_thin_pool` |
-| `infra/talos/patches/generated/all/30-raw-volumes.yaml.j2` | `RawVolumeConfig` with `name: openebs-lvm`, `diskSelector.match: system_disk`, `minSize/maxSize: 20GB` |
+| `infra/talos/patches/generated/all/30-raw-volumes.yaml.j2` | `VolumeConfig` for `EPHEMERAL` cap + `RawVolumeConfig` with `name: openebs-lvm`, `diskSelector.match: system_disk`, `minSize/maxSize: 20GB` |
 | `flux/infrastructure/controllers/generated/selected/kustomization.yaml` | gains `../../_components/openebs` alongside `cilium` and `hcloud-ccm` |
 
 Use `-e config_render_check=true` to render to a temp dir and diff without
@@ -106,12 +109,13 @@ writing — clean check-mode diffs confirm toggle symmetry.
 ansible-playbook -i inventories/common -i inventories/providers/hcloud playbooks/bootstrap-talos.yml
 ```
 
-This applies the RawVolumeConfig (carves `r-openebs-lvm` from the system disk)
-and the kernel-module patch.
+This applies the EPHEMERAL cap + RawVolumeConfig (carves `r-openebs-lvm` from
+the system disk) and the kernel-module patch.
 
-> **A reboot may be required** to complete the partition provisioning and the
-> `dm_*` module load. If Talos reports a reboot is needed, run
-> `upgrade-talos.yml` or reboot the node.
+> **A reboot is not enough** if the raw volume failed because EPHEMERAL filled
+> the disk. The partition layout only changes on a fresh Talos install, so
+> rebuild the node and re-run `bootstrap-talos.yml`. Reboot only helps once the
+> partition already exists and Talos is finishing the module load.
 
 Verify the partition and modules:
 
@@ -236,7 +240,8 @@ This is a **logical volume** expansion — it does not touch the Talos
 `RawVolumeConfig` partition, which stays at 20GB. The LV grows within the
 VG's free extents; if the underlying volume group itself runs out, the
 expansion fails (recover by deleting unused LVs or, in extremis, see the
-partition resize procedure below).
+partition resize procedure below). The Talos EPHEMERAL cap is what leaves the
+raw partition free space in the first place.
 
 ### Partition resize (RawVolumeConfig) — non-trivial
 
@@ -260,10 +265,10 @@ partition is fixed. Resizing the partition is a destructive operation:
      'vgremove -y openebs-vg && pvremove /dev/disk/by-partlabel/r-openebs-lvm'
    talosctl -n <node> wipe /dev/disk/by-partlabel/r-openebs-lvm
    ```
-5. **Update `minSize` / `maxSize`** in `config/clusters/kube1/cluster.yaml`
-   and re-render.
-6. **Re-run `bootstrap-talos.yml`** — partition-table changes require a
-   reboot. The `RawVolumeConfig` is re-applied with the new size.
+5. **Update the Talos storage sizing** in `config/clusters/kube1/cluster.yaml`
+   (or the generated Talos storage template) and re-render.
+6. **Rebuild the node, then re-run `bootstrap-talos.yml`** — EPHEMERAL and
+   RawVolumeConfig sizing are only honored on initial disk provisioning.
 7. **Re-run the Flux reconciliation** — the init container recreates the VG
    on the resized partition.
 8. **Re-create the PVCs and reschedule the workloads.**
