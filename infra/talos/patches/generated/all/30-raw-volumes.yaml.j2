@@ -21,6 +21,21 @@
 # encryption keys — no encryption fields are emitted here.
 #
 # Gated on features.openebs — not emitted when openebs is disabled.
+#
+# VolumeConfig for EPHEMERAL: cap EPHEMERAL so the raw volume below has space.
+# EPHEMERAL defaults to growing to fill all remaining disk space. Without a
+# maxSize it claims everything before RawVolumeConfig can be provisioned.
+# grow: false prevents re-expansion on subsequent boots.
+# Negative maxSize: -22GiB means "leave 22 GiB free" regardless of disk size.
+# On an 80 GB CX33 disk (~76.3 GiB usable after alignment): EPHEMERAL gets
+# ~54 GiB, leaving ~22 GiB for the 20 GB (18.6 GiB) raw partition below.
+---
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+provisioning:
+  maxSize: -22GiB
+  grow: false
 ---
 apiVersion: v1alpha1
 kind: RawVolumeConfig
