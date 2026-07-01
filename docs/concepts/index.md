@@ -1,6 +1,6 @@
 ---
 title: Concepts
-description: Explanations of how the Talos Kubernetes bootstrap template works — architecture, config compilation, GitOps model, and provider portability.
+description: Explanations of how the Talos Kubernetes bootstrap template works — architecture, config compilation, GitOps, and provider portability.
 type: index
 audience: [user, operator, ai]
 tags: [concepts, talos, kubernetes, architecture]

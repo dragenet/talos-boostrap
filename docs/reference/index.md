@@ -1,6 +1,6 @@
 ---
 title: Reference
-description: Lookup tables, schemas, and glossary for the Talos Kubernetes bootstrap template — playbooks, cluster.yaml schema, inventory contract, and more.
+description: Lookup tables, schemas, and glossary for the Talos Kubernetes bootstrap template — playbooks, cluster.yaml schema, and inventory contract.
 type: index
 audience: [user, operator, ai]
 tags: [reference, schema, playbooks, glossary]

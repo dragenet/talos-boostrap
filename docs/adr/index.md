@@ -29,7 +29,7 @@ For instance-specific ADRs (e.g. for the kube1 Hetzner example), see [examples/k
 | … | … | … |
 | 0017 | _coming soon_ | — |
 
-_ADR files will be populated in Step 2 of the docs rewrite. Numbers 0001–0017 are reserved for migration from `dev-docs/cluster-bootstrap/adrs/`._
+_ADR files will be populated in Step 2 of the docs rewrite. Numbers 0001–0017 are reserved for migration from `docs/cluster-bootstrap/adrs/ (git history)`._
 
 ## How to write an ADR
 

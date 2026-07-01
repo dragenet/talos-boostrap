@@ -4,7 +4,7 @@ description: The authoring contract for all docs/ vault notes — frontmatter sc
 type: guide
 audience: [contributor, ai]
 tags: [contributing, docs, style]
-status: stable
+status: draft
 created: 2026-07-01
 updated: 2026-07-01
 related:

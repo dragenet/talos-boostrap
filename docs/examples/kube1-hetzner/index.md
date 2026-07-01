@@ -9,7 +9,7 @@ created: 2026-07-01
 updated: 2026-07-01
 related:
   - ../../index.md
-  - adrs/
+  - adrs/index.md
 ---
 
 # Example: kube1 on Hetzner Cloud
