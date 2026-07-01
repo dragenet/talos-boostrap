@@ -40,7 +40,7 @@ Install the following tools on your control machine before proceeding:
 | `kubectl` | Interact with the Kubernetes API |
 | `ansible` (ansible-core ≥ 2.15) | Run provisioning and bootstrap playbooks |
 | `flux` CLI | Bootstrap and monitor FluxCD |
-| Provider CLI | Cloud provider control (e.g. `hcloud` for Hetzner Cloud) |
+| Provider CLI | Cloud provider control (use your provider's CLI) |
 | `sops` + `age` | Decrypt SOPS-encrypted secrets used by Ansible |
 | `helm` | Required by Ansible roles that install pre-Flux Helm releases |
 
@@ -106,31 +106,21 @@ The render runs on `localhost`, contacts no external APIs, and is safe to re-run
 
 > **Drift invariant:** CI asserts that `render(inputs) == committed tree`. Commit the generated output before running live playbooks so the repo remains self-describing.
 
-```shell
-git add -A && git commit -m "config: render <cluster-name>"
-```
-
 ---
 
 ## Step 3 — Provision Infrastructure
 
 This step is provider-specific. If you are using a managed cloud provider, run its provisioning playbook to create the nodes. For manually provisioned hardware, boot the nodes from a Talos image and skip this step.
 
-**Example — Hetzner Cloud:**
+**Example — `<provider>`:**
 
 ```shell
 # From infra/ansible/
 ansible-playbook \
   -i inventories/common \
-  -i inventories/providers/hcloud \
-  playbooks/providers/hcloud/provision-infra.yml
+  -i inventories/providers/<provider> \
+  playbooks/providers/<provider>/provision-infra.yml
 ```
-
-> **Note:** Hetzner Cloud provisioning requires a Talos snapshot matching the current `talos.version` and schematic. If none exists, build one first:
-> ```shell
-> ansible-playbook -i inventories/common -i inventories/providers/hcloud \
->   playbooks/providers/hcloud/image-talos.yml
-> ```
 
 For other providers, run the equivalent playbook under `playbooks/providers/<provider>/`.
 
@@ -217,7 +207,7 @@ flux get all
 kubectl -n flux-system get pods
 ```
 
-What to expect: Flux watches `flux/clusters/<cluster-name>/` and reconciles the `infrastructure-controllers`, `infrastructure-configs`, and `apps` kustomizations in order. On first bootstrap, Flux detects the pre-installed Cilium and CCM Helm releases and adopts them without reinstalling.
+What to expect: Flux watches `flux/clusters/<cluster-name>/` and reconciles the `infrastructure-controllers` and `infrastructure-configs` kustomizations defined there. On first bootstrap, Flux detects the pre-installed Cilium and CCM Helm releases and adopts them without reinstalling.
 
 ---
 
