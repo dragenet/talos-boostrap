@@ -4,7 +4,7 @@ description: Task-oriented how-to guides covering the full Talos Kubernetes clus
 type: index
 audience: [user, operator]
 tags: [guides, talos, kubernetes]
-status: draft
+status: stable
 created: 2026-07-01
 updated: 2026-07-01
 related:
@@ -30,4 +30,4 @@ Task-oriented how-to guides for every stage of the cluster lifecycle. Each guide
 | [GitOps with Flux](gitops-with-flux.md) | Understanding and operating the Flux GitOps workflow |
 | [Disaster Recovery](disaster-recovery.md) | Backup, restore, and cluster recovery procedures |
 
-_Pages marked with filenames but not yet linked are coming in a later step._
+
