@@ -43,7 +43,7 @@ all:
   children:
     hybrid:
       hosts:
-        kube1-hb1:
+        example-hb1:
           node_role: hybrid
           node_public_ip: 1.2.3.4
           node_private_ip: 10.0.0.2
@@ -123,7 +123,7 @@ No changes to `talos_config`, `talos_upgrade`, or `flux_bootstrap` are needed.
 - `hcloud_topology` count map (in the generated `group_vars/all/hcloud.yml`, sourced
   from `config/clusters/<cluster>/cluster.yaml` `hcloud.topology`) drives server creation — no
   static host list needed.
-- Server labels (`cluster=kube1`, `role=hybrid`) are the bridge between provisioning and
+- Server labels (`cluster=example`, `role=hybrid`) are the bridge between provisioning and
   the dynamic inventory plugin.
 - `hcloud.sops.yaml` holds the API token (user/secret-owned, never rendered); the
   `module_defaults` group key `group/hetzner.hcloud.all: { api_token: ... }` injects

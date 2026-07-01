@@ -21,7 +21,7 @@ not strip them on reconciliation.
 
 ## OpenEBS disk layout
 
-On kube1's CX33 disks, Talos EPHEMERAL initially consumed the whole system
+On the example cluster's CX33 disks, Talos EPHEMERAL initially consumed the whole system
 disk and left no free space for the OpenEBS raw volume. The Talos config now
 emits an `EPHEMERAL` `VolumeConfig` cap before the OpenEBS `RawVolumeConfig`,
 so a fresh rebuild leaves room for `/dev/disk/by-partlabel/r-openebs-lvm`.

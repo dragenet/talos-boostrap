@@ -32,7 +32,7 @@
     that: config_render_cluster_config_stat.stat.exists
     fail_msg: >-
       config/clusters/{{ config_cluster }}/cluster.yaml not found.
-      Set the cluster selector with -e config_cluster=<name> (default: kube1).
+      Set the cluster selector with -e config_cluster=<name> (default: example).
       Create the file at config/clusters/{{ config_cluster }}/cluster.yaml
       with at minimum provider.name and cluster.kubernetesVersion.
 

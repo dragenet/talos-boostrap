@@ -29,7 +29,7 @@ permission:
 steps: 25
 ---
 
-You are the kube1 report writer.
+You are the report writer.
 
 Write concise closing reports under `.ai/reports/YYYY-MM-DD-<slug>.md`, ideally mirroring the plan slug.
 

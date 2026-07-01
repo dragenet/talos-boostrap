@@ -388,7 +388,7 @@
 # accidentally erased by user fragments. This ordering is intentional: user
 # per-node overlays can customise their node but must not override the
 # cluster-enforced identity (hostname, node labels, hybrid scheduling).
-# Per-node worker overlays (future: from config/clusters/kube1/talos/nodes/)
+# Per-node worker overlays (future: from config/clusters/example/talos/nodes/)
 # follow the same rule — they apply before these identity patches.
 - name: Apply machine config to nodes in maintenance mode
   ansible.builtin.command:

@@ -3,7 +3,7 @@
 #
 # Owner: Template maintainers. Edit only when updating the OpenEBS
 # adoption contract; cluster-specific overrides go through
-# ../../overlays/clusters/kube1/ (user-owned patches).
+# ../../overlays/clusters/example/ (user-owned patches).
 #
 # Installs OpenEBS LVM LocalPV into the dedicated csi-openebs-system
 # namespace (CSI-specific convention). This is a purely Flux-managed

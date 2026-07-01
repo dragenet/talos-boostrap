@@ -1,6 +1,8 @@
-# kube1
+# Talos Kubernetes Bootstrap Template
 
-Infrastructure-as-code for a 3-node Talos Linux Kubernetes cluster on Hetzner Cloud.
+Infrastructure-as-code template for deploying Talos Linux Kubernetes clusters.
+The current implementation includes Ansible provisioning/bootstrap flows, Talos
+configuration rendering, and Flux GitOps manifests.
 
 For architecture decisions, engineering standards, workflows, and the current
 implementation status, see [CLAUDE.md](./CLAUDE.md) — it is the canonical source of

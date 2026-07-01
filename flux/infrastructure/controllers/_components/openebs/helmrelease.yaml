@@ -38,10 +38,10 @@ spec:
         name: openebs-lvm-localpv
         namespace: csi-openebs-system
   values:
-    # ----- Node DaemonSet scheduling (kube1 hybrids) -----
+    # ----- Node DaemonSet scheduling (the cluster's hybrid nodes) -----
     # lvmNode.tolerations replaces the chart default (empty list → no
-    # tolerations block rendered). Re-state everything needed for kube1
-    # hybrid nodes, including the external-cloud-provider uninitialized
+    # tolerations block rendered). Re-state everything needed for the
+    # cluster's hybrid nodes, including the external-cloud-provider uninitialized
     # taint (same Cilium issue #41921 concern — the node DaemonSet must
     # schedule before hcloud CCM clears the taint on a fresh bootstrap).
     lvmNode:

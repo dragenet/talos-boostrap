@@ -1,0 +1,9 @@
+---
+# config/clusters/example/talos/all.yaml — USER-OWNED example Talos overlay for all
+# node types.
+#
+# Add example-specific Talos patches that apply to every node here. These are
+# Talos-shaped machine config patch manifests (ADR-016).
+#
+# Currently empty — the example cluster has no cluster-specific all-node patches
+# beyond the shared base and selected components.

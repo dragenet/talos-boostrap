@@ -452,7 +452,7 @@
 # Order: 05-base → 06-cluster
 # Worker-scope patches affect pure worker nodes only. Hybrid nodes consume
 # the controlplane config (all + controlplane patches) instead, so worker
-# overlays are unused on hybrid-only clusters like kube1. The rendering
+# overlays are unused on hybrid-only clusters like this cluster. The rendering
 # infrastructure exists so pure-worker nodes added later pick them up.
 
 # --- 05-base: config/talos/base/worker.yaml (skip if comment-only) ---
@@ -532,7 +532,7 @@
 
 # --- Worker directory sentinel (.gitkeep) ---
 # When both base and cluster worker overlays are comment-only/empty (the common
-# case for hybrid-only clusters like kube1), the worker/ output directory would
+# case for hybrid-only clusters like this cluster), the worker/ output directory would
 # otherwise have no generated patch files. An empty untracked directory causes
 # check-mode diff drift ("Only in <temp>: .../worker" from diff -ru). Rendering
 # a .gitkeep makes the directory commit-stable so both the committed tree and

@@ -159,7 +159,7 @@ flux_bootstrap_hcloud_ccm_values:
 # (rendered from config/overrides/cluster.yaml flux: section by render-config):
 #   flux_repo_url                   → Git repository URL (required for generic git)
 #   flux_repo_branch                → Git branch (default: master)
-#   flux_path                       → Cluster directory path (e.g. ./flux/clusters/kube1)
+#   flux_path                       → Cluster directory path (e.g. ./flux/clusters/example)
 #   flux_provider                   → generic | github | bitbucket-server
 #   flux_auth_mode                  → provider-deploy-key | https-token | ssh-private-key
 #   flux_auth_username              → HTTPS basic / Bitbucket API username

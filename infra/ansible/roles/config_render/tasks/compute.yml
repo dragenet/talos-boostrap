@@ -166,7 +166,7 @@
 
 # --- Storage volume derived facts ---
 # config_render_storage_raw_volumes: only volumes with type == 'raw' (drives
-# RawVolumeConfig render; on kube1 today all volumes are raw).
+# RawVolumeConfig render; on this cluster today all volumes are raw).
 # config_render_openebs_enabled: convenience bool gating kernel-module patch
 # + RawVolumeConfig + Flux catalog entry.
 - name: Compute storage raw volumes list

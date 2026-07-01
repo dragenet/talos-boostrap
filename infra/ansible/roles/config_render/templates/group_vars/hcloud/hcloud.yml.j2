@@ -58,7 +58,7 @@ hcloud_admin_ips: {{ config_render_merged.hcloud.adminIps | default([]) | to_yam
 # {{ '{{' }} cluster_name {{ '}}' }}-{{ '{{' }} node_role_short[role] {{ '}}' }}{{ '{{' }} n {{ '}}' }}
 # Private IPs are assigned deterministically from the subnet base + index,
 # ordered: controlplane nodes first, then hybrid, then worker.
-# Current cluster: 3 hybrid nodes (kube1-hb1 → 10.0.0.11, etc.)
+# Current cluster: 3 hybrid nodes (example-hb1 → 10.0.0.11, etc.)
 hcloud_topology:
 {% for role, count in config_render_merged.hcloud.topology.items() %}
   {{ role }}: {{ count }}

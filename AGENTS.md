@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This repo is infrastructure-as-code for `kube1`, a Talos Linux Kubernetes cluster on Hetzner Cloud.
+This repo is a reusable Talos Linux Kubernetes cluster deployment template.
 
 `CLAUDE.md` is the canonical source for architecture, workflows, repo status, and engineering standards. This file is the short OpenCode-facing entrypoint.
 
@@ -16,7 +16,7 @@ This repo is infrastructure-as-code for `kube1`, a Talos Linux Kubernetes cluste
 - Use `web-fast-context` for official docs and external facts.
 - Prefer graphify every time the main session needs repo context, not just at the start. Do not use `Read` or `Glob` in the main session until graphify has narrowed the files for that specific question.
 - Keep architectural decision-making in the live session or planners; `adr-writer` only writes ADR files for agreed decisions.
-- Do not use the generic `explore` agent for kube1 repo questions.
+- Do not use the generic `explore` agent for repo questions.
 - Broad `bash` access means local non-destructive commands may run freely. Agents must ask before destructive, irreversible, live-cluster, provider-costing, secret-touching, or history-rewriting commands.
 
 ## Subagents

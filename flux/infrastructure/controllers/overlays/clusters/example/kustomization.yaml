@@ -1,5 +1,5 @@
 # Per-cluster overlay for controllers — cluster-specific patches and
-# customizations for kube1.
+# customizations for example.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:

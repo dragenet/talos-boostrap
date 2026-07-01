@@ -1,8 +1,8 @@
 ---
-# config/clusters/kube1/talos/controlplane.yaml — USER-OWNED kube1 Talos overlay
+# config/clusters/example/talos/controlplane.yaml — USER-OWNED example Talos overlay
 # for control-plane nodes (etcd members).
 #
-# Add kube1-specific Talos patches for control-plane nodes here. These are
+# Add example-specific Talos patches for control-plane nodes here. These are
 # Talos-shaped machine config patch manifests (ADR-016).
 #
 # Currently empty — the VIP and network interface selection remain as computed

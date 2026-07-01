@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://kube1.local/schemas/nodes.schema.json",
-  "title": "kube1 per-node overrides",
+  "$id": "https://talos-bootstrap-template.local/schemas/nodes.schema.json",
+  "title": "Per-node overrides",
   "type": "object",
   "required": ["nodes"],
   "additionalProperties": false,

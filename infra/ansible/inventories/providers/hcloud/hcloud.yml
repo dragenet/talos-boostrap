@@ -7,7 +7,7 @@ plugin: hetzner.hcloud.hcloud
 # Token read from the SOPS-encrypted hcloud secrets file so there's a single
 # source of truth. Requires community.sops >= 1.9.0 for the `extract` param.
 token: "{{ lookup('community.sops.sops', 'inventories/providers/hcloud/group_vars/all/hcloud.sops.yaml', extract='[\"hcloud_token\"]') }}"
-label_selector: "cluster=kube1"
+label_selector: "cluster=example"
 # network: filters the inventory to servers attached to this network AND
 # populates the hcloud_private_ipv4 hostvar. Without it, the compose below
 # would set node_private_ip to an empty value — silently violating the
@@ -15,7 +15,7 @@ label_selector: "cluster=kube1"
 # to expose node_private_ip. Hardcoded like label_selector above; the
 # inventory plugin loads before group_vars, so Jinja refs to hcloud_*
 # are not resolvable here (only lookup() plugins work, as used for token).
-network: kube1
+network: example
 # Group servers by their role label (full names: controlplane, hybrid, worker).
 # A server labeled role=hybrid lands in the `hybrid` group, matching hosts.yml.
 keyed_groups:

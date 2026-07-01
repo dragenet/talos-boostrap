@@ -1,6 +1,6 @@
 ---
 # ClusterIssuer for Let's Encrypt staging ACME (test certificates).
-# This is a user-owned resource for kube1. The Cloudflare API token Secret
+# This is a user-owned resource for example cluster. The Cloudflare API token Secret
 # (cloudflare-api-token/api-token) must be provisioned out-of-band — DNS-01
 # challenges will NOT solve until it exists.
 #

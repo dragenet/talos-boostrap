@@ -9,10 +9,10 @@
 # playbook_dir = infra/ansible/playbooks → ../../.. = repo root.
 config_render_repo_root: "{{ playbook_dir }}/../../.."
 
-# Selected cluster name (ADR-016). Set via -e config_cluster=kube1 or left at
+# Selected cluster name (ADR-016). Set via -e config_cluster=example or left at
 # the default. The selected cluster determines which config/clusters/<name>/
 # path is loaded for provider/features/versions/nodes.
-config_cluster: kube1  # noqa: var-naming[no-role-prefix] — user-facing cluster selector, -e config_cluster=<name>
+config_cluster: example  # noqa: var-naming[no-role-prefix] — user-facing cluster selector, -e config_cluster=<name>
 
 # ─── Primary input paths (ADR-016/ADR-017) ─────────────────────────────────
 # config/defaults/cluster.yaml is the template-owned, always-loaded defaults

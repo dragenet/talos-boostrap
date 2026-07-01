@@ -57,7 +57,7 @@
     },
     "external_directory": {
       "*": "ask",
-      "~/Projects/infra/kube1/**": "allow"
+      "~/Projects/infra/talos-boostrap/**": "allow"
     },
     "task": {
       "*": "ask"

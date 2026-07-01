@@ -1,18 +1,18 @@
 ---
 # yaml-language-server: $schema=../../schemas/cluster-input.schema.json
-# config/clusters/kube1/cluster.yaml — USER-OWNED kube1-specific choices.
+# config/clusters/example/cluster.yaml — USER-OWNED example-specific choices.
 #
 # This file carries every value that differs from the template defaults for
-# the kube1 cluster. The render deep-merges this over config/defaults/cluster.yaml
+# the example cluster. The render deep-merges this over config/defaults/cluster.yaml
 # (overrides win per-key) and emits generated group_vars consumed by Ansible roles.
 #
 # This is the ADR-016 selected-cluster input path, loaded when
-# config_cluster=kube1 (the default). config/clusters/kube1/ is the sole
+# config_cluster=example (the default). config/clusters/example/ is the sole
 # user-owned source; it is deep-merged with config/defaults/cluster.yaml
 # (template-owned defaults) and rendered into Ansible group_vars.
 #
 # Edit THIS file to change cluster configuration, then run:
-#   ansible-playbook playbooks/render-config.yml -e config_cluster=kube1
+#   ansible-playbook playbooks/render-config.yml -e config_cluster=example
 # Review the generated diffs before running live playbooks.
 #
 # Migrated from the pre-refactor hand-authored group_vars:
@@ -20,7 +20,7 @@
 #   inventories/providers/hcloud/group_vars/all/hcloud.yml
 
 cluster:
-  name: kube1
+  name: example
   kubernetesVersion: v1.36.0
   vip: 10.0.0.10
   # endpoint is computed from vip by default (https://<vip>:6443).
@@ -47,9 +47,9 @@ cluster:
     kubernetes:
       # Public node IPs — allows kubectl from the local machine while the
       # cluster has no external LB or VPN. The VIP (10.0.0.10) is private-only.
-      - 188.245.209.69   # kube1-hb1
-      - 46.224.155.183   # kube1-hb2
-      - 46.225.77.49     # kube1-hb3
+      - 188.245.209.69   # example-hb1
+      - 46.224.155.183   # example-hb2
+      - 46.225.77.49     # example-hb3
   nodeRoleShort:
     controlplane: cp
     hybrid: hb
@@ -64,7 +64,7 @@ flux:
   # as the canonical display / source-of-truth reference.
   repoUrl: 'ssh://git@github.com/dragenet/infra-kube1.git'
   repoBranch: master
-  path: ./flux/clusters/kube1
+  path: ./flux/clusters/example
 
   # ── Flux bootstrap authentication ───────────────────────────────────────────
   #
@@ -97,7 +97,7 @@ talos:
     # talos.network.vip is intentionally absent — the renderer rejects it.
     defaultInterface:
       # ADR-013 prefers deviceSelector (stable hardware identity) over
-      # interface names. Confirmed on kube1 via talosctl get links:
+      # interface names. Confirmed on this cluster via talosctl get links:
       # eth1 HW addr is 86:00:00:4d:a8:b8; cluster-wide selector is safe.
       deviceSelector:
         hardwareAddr: '86:00:00:*'
@@ -162,13 +162,13 @@ hcloud:
   # For the temporary snapshot builder only; something small is fine.
   builderServerTypes: [cx23, cx33, cpx22]
 
-  privateNetworkName: kube1
+  privateNetworkName: example
   privateNetworkCidr: 10.0.0.0/16
   privateSubnetCidr: 10.0.0.0/24
-  firewallName: kube1
+  firewallName: example
 
   # SSH key registered in Hetzner Cloud — used only during image build (rescue mode).
-  sshKeyName: kube1-provisioning
+  sshKeyName: example-provisioning
 
   # ─── Admin access mode ─────────────────────────────────────────────────────
   #
@@ -196,7 +196,7 @@ hcloud:
   # {{ cluster_name }}-{{ nodeRoleShort[role] }}{{ n }}
   # Private IPs are assigned deterministically from the subnet base + index,
   # ordered: controlplane nodes first, then hybrid, then worker.
-  # Current cluster: 3 hybrid nodes (kube1-hb1 → 10.0.0.11, etc.)
+  # Current cluster: 3 hybrid nodes (example-hb1 → 10.0.0.11, etc.)
   topology:
     controlplane: 0
     hybrid: 3

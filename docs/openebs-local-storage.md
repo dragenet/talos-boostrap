@@ -1,6 +1,6 @@
-# OpenEBS LVM LocalPV on kube1
+# OpenEBS LVM LocalPV
 
-Operational runbook for the local-storage tier on kube1. The architectural
+Operational runbook for the local-storage tier on this template. The architectural
 background and trade-offs (local vs networked storage, the `RawVolumeConfig`
 + LVM design, the `hcloud-volumes` vs `openebs-lvm-localpv` choice) live in
 [ADR-009](../cluster-bootstrap/adrs/009-openebs-local-lv-lvm.md) — this
@@ -13,7 +13,7 @@ Logical Volumes on a host-local Volume Group — local-disk latency with
 Kubernetes-native PVC semantics. This repo provisions the backing device via
 a Talos `RawVolumeConfig` partition on the system/boot disk and uses a
 privileged init container on the lvm-node DaemonSet to create the LVM VG
-(`openebs-vg`) on that partition. kube1 is a 3-hybrid-node cluster, all on a
+(`openebs-vg`) on that partition. The example cluster is a 3-hybrid-node cluster, all on a
 single boot NVMe — the same 20GB partition shape backs all three node-local VGs.
 
 ## How it works
@@ -56,9 +56,9 @@ single boot NVMe — the same 20GB partition shape backs all three node-local VG
 
 ## Enabling
 
-### 1. Toggle the kube1 config
+### 1. Toggle the cluster config
 
-OpenEBS is **already enabled** in `config/clusters/kube1/cluster.yaml`. The
+OpenEBS is **already enabled** in `config/clusters/<cluster>/cluster.yaml`. The
 two enablement points are:
 
 ```yaml
@@ -167,7 +167,7 @@ kubectl describe sc openebs-lvm-localpv
 
 Expected output (per node):
 
-- `openebs-lvm-localpv-node-xxxx` pod `Running` on each `kube1-hbN`.
+- `openebs-lvm-localpv-node-xxxx` pod `Running` on each `example-hbN`.
 - `volumestatus r-openebs-lvm` → `STATUS=Ready`, `SIZE=20GB`.
 - `vgs openebs-vg` shows one `PV` (`/dev/disk/by-partlabel/r-openebs-lvm`).
 - StorageClass: `Provisioner: local.csi.openebs.io`, `Parameters:
@@ -200,7 +200,7 @@ kind: Pod
 metadata:
   name: openebs-lvm-test
 spec:
-  nodeName: kube1-hb1                  # pin to one of the three hybrid nodes
+  nodeName: example-hb1                # pin to one of the three hybrid nodes
   containers:
     - name: app
       image: busybox:1.37
@@ -265,7 +265,7 @@ partition is fixed. Resizing the partition is a destructive operation:
      'vgremove -y openebs-vg && pvremove /dev/disk/by-partlabel/r-openebs-lvm'
    talosctl -n <node> wipe /dev/disk/by-partlabel/r-openebs-lvm
    ```
-5. **Update the Talos storage sizing** in `config/clusters/kube1/cluster.yaml`
+5. **Update the Talos storage sizing** in `config/clusters/<cluster>/cluster.yaml`
    (or the generated Talos storage template) and re-render.
 6. **Rebuild the node, then re-run `bootstrap-talos.yml`** — EPHEMERAL and
    RawVolumeConfig sizing are only honored on initial disk provisioning.
@@ -346,14 +346,14 @@ fails to boot after enabling OpenEBS:**
 
 - **Catalog lives in** `flux/infrastructure/controllers/_components/openebs/`.
   Each file is template-maintained; cluster-specific overrides go under
-  `../../overlays/clusters/kube1/` (the standard per-cluster overlay path).
+  `../../overlays/clusters/<cluster>/` (the standard per-cluster overlay path).
 - **Talos↔Flux coupling (single point):** the StorageClass
   `parameters.volgroup` and the init-container `vgName` are both hardcoded
   to `openebs-vg`. To change the VG name, edit BOTH:
   - `helmrelease.yaml` — the `VG=openebs-vg` line in the postRenderer shell script
   - `openebs-lvm-localpv.yaml` — `parameters.volgroup`
   And if the partlabel changes, also update the `name: openebs-lvm` volume
-  in `config/clusters/kube1/cluster.yaml` and re-render.
+  in `config/clusters/<cluster>/cluster.yaml` and re-render.
 - **Image pins** — both `lvmPlugin.image.tag` and the postRenderer
   `docker.io/openebs/lvm-driver:<tag>` are pinned in lockstep to the chart
   version (currently `1.9.1`). The chart's `appVersion` does not always

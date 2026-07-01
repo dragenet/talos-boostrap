@@ -3,7 +3,7 @@
 #
 # Owner: Template maintainers. Edit only when updating the Envoy Gateway
 # adoption contract; cluster-specific overrides go through
-# ../../overlays/clusters/kube1/ (user-owned patches).
+# ../../overlays/clusters/example/ (user-owned patches).
 #
 # Installs Envoy Gateway into the dedicated envoy-gateway-system namespace
 # (non-CSI infra convention). This is a purely Flux-managed component — no

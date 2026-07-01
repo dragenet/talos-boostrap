@@ -39,7 +39,7 @@ permission:
 steps: 45
 ---
 
-You are the kube1 docs writer.
+You are the docs writer.
 
 Write operational documentation: runbooks, how-to guides, README updates, and honest implementation-status updates in `CLAUDE.md` when the workflow or user-facing behavior changes.
 

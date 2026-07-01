@@ -1,6 +1,6 @@
-# cert-manager + Envoy Gateway on kube1
+# cert-manager + Envoy Gateway
 
-Operational runbook for the TLS + L7 controllers on kube1. The catalog
+Operational runbook for the TLS + L7 controllers on this template's example cluster. The catalog
 decisions (CRD channel ownership, namespace deviations, why we disable the
 chart-bundled Gateway API CRDs) are recorded in the catalog headers under
 `flux/infrastructure/controllers/_components/`; this document is the
@@ -16,11 +16,11 @@ per-cluster configs overlay:
 | `_components/cert-manager/` | `cert-manager` | cert-manager chart `1.20.3` from `oci://quay.io/jetstack/charts` (controller only — no Issuers, no Secrets, CA/DNS-agnostic) |
 | `_components/gateway-api/standard/` (or `experimental/`) | `envoy-gateway-system` | Raw CRD YAML committed in-repo — Gateway API CRDs (channel picked) + Envoy Gateway CRDs |
 | `_components/ingress/envoy-gateway/` | `envoy-gateway-system` | `gateway-helm` chart v1.8.1 from `oci://docker.io/envoyproxy` (bundled Gateway API CRDs **disabled**), plus the `GatewayClass envoy-gateway` resource |
-| `flux/infrastructure/configs/overlays/clusters/kube1/` (user-owned) | `cert-manager` | Two `ClusterIssuer` resources (`letsencrypt-staging`, `letsencrypt-prod`, ACME + Cloudflare DNS-01) — reference the token Secret **by name** |
+| `flux/infrastructure/configs/overlays/clusters/<cluster>/` (user-owned) | `cert-manager` | Two `ClusterIssuer` resources (`letsencrypt-staging`, `letsencrypt-prod`, ACME + Cloudflare DNS-01) — reference the token Secret **by name** |
 
 The render compiler selects the three catalog entries when
 `features.certManager: true` and `features.ingress: envoy-gateway` are set in
-`config/clusters/kube1/cluster.yaml`, and picks `gateway-api/standard` vs
+`config/clusters/<cluster>/cluster.yaml`, and picks `gateway-api/standard` vs
 `gateway-api/experimental` from `ingress.gatewayApiChannel` (default
 `standard`). The `generated/selected/kustomization.yaml` includes
 `../../_components/cert-manager`, `../../_components/gateway-api/<channel>`,
@@ -38,7 +38,7 @@ have their CRDs available by the time the controller reconciles.
 
 ## Enabling
 
-Both flags are **already enabled** in `config/clusters/kube1/cluster.yaml`:
+Both flags are **already enabled** in `config/clusters/<cluster>/cluster.yaml`:
 
 ```yaml
 features:
@@ -237,7 +237,7 @@ follow-up.
     CRDs `Skip`, `dependsOn: envoy-gateway-crds`), and the
     `GatewayClass envoy-gateway`.
 - **User-owned ClusterIssuers** under
-  `flux/infrastructure/configs/overlays/clusters/kube1/`:
+  `flux/infrastructure/configs/overlays/clusters/<cluster>/`:
   `letsencrypt-staging.yaml`, `letsencrypt-prod.yaml`. Edit the
   `spec.acme.email` placeholder (LE accepts an empty value but no expiry
   notices will be sent).
@@ -248,5 +248,5 @@ follow-up.
 - **Architectural background** — see
   [cluster-bootstrap ADR-004](../cluster-bootstrap/adrs/004-envoy-gateway-l7.md)
   (Envoy Gateway L7) and
-  [kube1 ADR-004](./adrs/004-tls-lets-encrypt-cloudflare.md) (LE + Cloudflare on
+  [TLS + Cloudflare ADR-004](./adrs/004-tls-lets-encrypt-cloudflare.md) (LE + Cloudflare on
   `dragenet.dev`).

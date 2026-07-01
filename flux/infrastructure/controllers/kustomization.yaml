@@ -1,18 +1,18 @@
 # User-owned overlay — references the per-cluster controller overlay chain.
 # See ADR-017 for the four-tier overlay ownership model.
 #
-# Overlay chain: overlays/clusters/kube1 → overlays/common → generated/selected
+# Overlay chain: overlays/clusters/example → overlays/common → generated/selected
 #   - generated/selected/ is render-owned: the compiler populates it with enabled
 #     catalog entries from _components/ based on cluster.yaml (ADR-010, ADR-012).
 #   - overlays/common/ holds repo-wide patches shared across all clusters.
-#   - overlays/clusters/kube1/ holds per-cluster patches for kube1.
+#   - overlays/clusters/example/ holds per-cluster patches for example.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - overlays/clusters/kube1
+  - overlays/clusters/example
 # Uncomment and extend when adding cluster-level patches from
-# overlays/clusters/kube1/patches/:
+# overlays/clusters/example/patches/:
 # patches:
-#   - path: overlays/clusters/kube1/patches/<example>.yaml
+#   - path: overlays/clusters/example/patches/<example>.yaml
 # For repo-wide patches shared across all clusters, add them in
 # overlays/common/ instead.

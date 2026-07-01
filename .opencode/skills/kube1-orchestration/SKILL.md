@@ -108,7 +108,7 @@ Preserve dependencies:
 
 - The user runs live cluster-changing commands.
 - Read official docs before changing external tools/providers/controllers.
-- Do not use the generic `explore` agent for kube1 repo questions.
+- Do not use the generic `explore` agent for repo questions.
 - Do not run broad raw shell repo searches in the primary session.
 - Broad `bash: allow` is a convenience for local non-destructive work, not permission to take risky side effects silently.
 - Ask the user before destructive, irreversible, live-cluster, provider-costing, secret-touching, or git history-rewriting commands.

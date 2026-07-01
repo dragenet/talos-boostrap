@@ -3,7 +3,7 @@
 #
 # Owner: Template maintainers. Edit only when updating the Gateway API
 # CRD adoption contract; cluster-specific overrides go through
-# ../../overlays/clusters/kube1/ (user-owned patches).
+# ../../overlays/clusters/example/ (user-owned patches).
 #
 # The CRDs are committed as raw YAML (gateway-api-crds.yaml, rendered from
 # oci://docker.io/envoyproxy/gateway-crds-helm@v1.8.1) rather than managed

@@ -21,15 +21,15 @@
 #
 # Cluster selection (ADR-016):
 #   The selected cluster determines which config/clusters/<name>/ directory is
-#   loaded. Defaults to kube1. Override with -e config_cluster=<name>.
+#   loaded. Defaults to example. Override with -e config_cluster=<name>.
 #   config/clusters/<name>/cluster.yaml MUST exist — a missing file fails fast
 #   with a clear error naming the path and selector. nodes.yaml is optional.
 #
 # Usage:
 #   ansible-playbook playbooks/render-config.yml
-#   ansible-playbook playbooks/render-config.yml -e config_cluster=kube1
+#   ansible-playbook playbooks/render-config.yml -e config_cluster=example
 #   ansible-playbook playbooks/render-config.yml -e config_render_check=true
-#   ansible-playbook playbooks/render-config.yml -e config_cluster=kube1 -e config_render_check=true
+#   ansible-playbook playbooks/render-config.yml -e config_cluster=example -e config_render_check=true
 - name: Render cluster configuration
   hosts: localhost
   gather_facts: false

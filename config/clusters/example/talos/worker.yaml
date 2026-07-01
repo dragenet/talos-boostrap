@@ -1,0 +1,8 @@
+---
+# config/clusters/example/talos/worker.yaml — USER-OWNED example Talos overlay for
+# worker nodes (no etcd).
+#
+# Add example-specific Talos patches for worker nodes here. These are Talos-shaped
+# machine config patch manifests (ADR-016).
+#
+# Currently empty — this example cluster uses only hybrid nodes (no pure workers).

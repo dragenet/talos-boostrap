@@ -1,9 +1,0 @@
----
-# config/clusters/kube1/talos/all.yaml — USER-OWNED kube1 Talos overlay for all
-# node types.
-#
-# Add kube1-specific Talos patches that apply to every node here. These are
-# Talos-shaped machine config patch manifests (ADR-016).
-#
-# Currently empty — the kube1 cluster has no cluster-specific all-node patches
-# beyond the shared base and selected components.

@@ -32,7 +32,7 @@
 # controlplane → hybrid → worker, so IPs are assigned deterministically.
 # Private IPs: subnet_base + hcloud_servers_ip_offset + global_index.
 # Names: {{ cluster_name }}-{{ node_role_short[role] }}{{ n }}
-# Example with topology {hybrid: 3}, offset 11: kube1-hb1→10.0.0.11, kube1-hb2→10.0.0.12, kube1-hb3→10.0.0.13
+# Example with topology {hybrid: 3}, offset 11: example-hb1→10.0.0.11, example-hb2→10.0.0.12, example-hb3→10.0.0.13
 - name: Build node list from topology
   ansible.builtin.set_fact:
     hcloud_servers_node_list: >-
