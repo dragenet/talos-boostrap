@@ -253,4 +253,5 @@ from the issuer's `Registered` condition.
   version bump, the CRD chart (`gateway-crds-helm`) and the controller
   chart (`gateway-helm`) MUST bump to the same release line.
 - **Architectural background** — see `../adr/0004-envoy-gateway-l7.md`
-  (Envoy Gateway L7).
+  (Envoy Gateway L7) and `../examples/kube1-hetzner/adrs/0004-tls-lets-encrypt-cloudflare.md`
+  (LE + Cloudflare on `dragenet.dev`).
