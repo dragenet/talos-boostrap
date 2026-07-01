@@ -40,7 +40,7 @@ Nodes are also placed into Ansible groups (`controlplane`, `hybrid`, `worker`) d
 
 ### Dynamic vs. Static Inventory
 
-- **Cloud providers** (e.g. hcloud): the provider's dynamic inventory plugin discovers live servers after provisioning and populates the hostvars above. A label selector scopes discovery to the current cluster.
+- **Cloud providers** (e.g. a cloud provider plugin): the provider's dynamic inventory plugin discovers live servers after provisioning and populates the hostvars above. A label selector scopes discovery to the current cluster.
 - **Manual (bare-metal)**: a checked-in `hosts.yml` declares the same hostvars statically.
 
 Both mechanisms produce identically-shaped hostvars; provider-agnostic roles see no difference.
@@ -90,7 +90,7 @@ At a high level, adding a provider requires:
 3. A `providers/<name>/` directory in `flux/infrastructure/controllers/_components/` for provider-gated Flux components (e.g. CSI driver).
 4. Hostvars that satisfy the inventory contract (`node_public_ip`, `node_private_ip`, `node_role`).
 
-No changes to provider-agnostic playbooks or roles are required. See `guides/add-a-provider.md` for the step-by-step procedure.
+No changes to provider-agnostic playbooks or roles are required. See [Add a Provider](../guides/add-a-provider.md) for the step-by-step procedure.
 
 ## Further Reading
 

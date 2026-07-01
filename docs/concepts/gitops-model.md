@@ -70,7 +70,7 @@ The illustrative Flux tree layout:
 flux/
   infrastructure/
     controllers/
-      components/              # template-owned component catalog
+      _components/             # template-owned component catalog
       base/                    # render-selected enabled components
       overlays/
         user/                  # repo-wide patches applied to all clusters
@@ -127,3 +127,4 @@ Cilium (CNI) and the provider CCM must be running before Flux can schedule its o
 - [ADR-006: FluxCD for GitOps](../adr/0006-fluxcd-gitops.md)
 - [ADR-012: Feature Catalog](../adr/0012-feature-catalog.md)
 - [ADR-017: Shared Overlay Ownership](../adr/0017-shared-overlay-ownership.md)
+- [GitOps with Flux](../guides/gitops-with-flux.md) — step-by-step guide

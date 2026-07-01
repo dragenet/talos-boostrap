@@ -108,3 +108,4 @@ Pure-git, no-render changes include: patching enabled features in the Flux overl
 - [Architecture Overview](architecture-overview.md) — where the config compiler fits in the overall system
 - [Layered Talos Config](layered-talos-config.md) — how Talos patches are assembled from the compiler's output
 - [ADR-011: Config Compiler](../adr/0011-config-compiler.md)
+- [Configure Your Cluster](../guides/configure-your-cluster.md) — step-by-step guide
