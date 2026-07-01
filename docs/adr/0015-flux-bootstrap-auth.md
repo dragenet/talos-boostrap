@@ -1,6 +1,6 @@
 ---
 title: "ADR-015: Flux bootstrap authentication modes and secret persistence"
-description: Flux bootstrap supports three auth modes (provider-deploy-key, https-token, ssh-private-key); secrets are SOPS-encrypted in Ansible group_vars.
+description: Flux bootstrap supports three auth modes (provider-deploy-key, https-token, ssh-private-key); secrets are SOPS-encrypted in group_vars.
 type: adr
 audience: [contributor, ai]
 tags: [adr, flux, security, authentication]

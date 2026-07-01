@@ -1,6 +1,6 @@
 ---
 title: "ADR-013: Layered Talos config — structured helpers + raw fragments"
-description: Two-layer Talos config model with structured helpers for common cases and raw patch fragments for full expressiveness. Superseded by ADR-016.
+description: Two-layer Talos config model with structured helpers for common cases and raw patch fragments for expressiveness. Superseded by ADR-016.
 type: adr
 audience: [contributor, ai]
 tags: [adr, talos, config]

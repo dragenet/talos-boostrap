@@ -1,6 +1,6 @@
 ---
 title: "ADR-004: TLS via Let's Encrypt + Cloudflare DNS-01 on dragenet.dev"
-description: cert-manager uses Let's Encrypt with Cloudflare DNS-01 challenges for dragenet.dev, enabling wildcard certificates without requiring port 80.
+description: cert-manager uses Let's Encrypt with Cloudflare DNS-01 challenges for dragenet.dev, enabling wildcard certificates without port 80.
 type: adr
 audience: [contributor, ai]
 tags: [adr, tls, cert-manager, cloudflare]

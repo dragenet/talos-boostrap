@@ -1,6 +1,6 @@
 ---
 title: "ADR-012: Feature catalog and taxonomy"
-description: Cluster components are catalogued under _components/; feature enablement is structural (rendered into generated/selected/), never a runtime value.
+description: Components are catalogued under _components/; feature enablement is structural (rendered into generated/selected/), never a runtime value.
 type: adr
 audience: [contributor, ai]
 tags: [adr, features, catalog, flux]

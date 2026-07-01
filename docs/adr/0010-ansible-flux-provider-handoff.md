@@ -1,6 +1,6 @@
 ---
 title: "ADR-010: Ansible-to-Flux provider handoff — pre-Flux layer and provider overlays"
-description: Core components (CNI, CCM) are installed pre-Flux by Ansible then adopted by Flux; provider-gated features are rendered into generated/selected/.
+description: Core components (CNI, CCM) installed pre-Flux by Ansible then adopted by Flux; provider-gated features rendered into generated/selected/.
 type: adr
 audience: [contributor, ai]
 tags: [adr, ansible, flux, bootstrap, provider]

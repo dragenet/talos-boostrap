@@ -1,6 +1,6 @@
 ---
 title: "ADR-005: Hetzner CSI driver for block storage"
-description: hcloud-csi is deployed as an infrastructure controller to provision Hetzner Cloud Volumes as ReadWriteOnce PVCs via the hcloud-volumes StorageClass.
+description: hcloud-csi deployed as infrastructure controller to provision Hetzner Cloud Volumes as ReadWriteOnce PVCs via hcloud-volumes StorageClass.
 type: adr
 audience: [contributor, ai]
 tags: [adr, storage, hetzner, csi]

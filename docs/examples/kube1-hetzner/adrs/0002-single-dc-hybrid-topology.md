@@ -1,6 +1,6 @@
 ---
 title: "ADR-002: Single DC, three hybrid nodes"
-description: Three hybrid (control-plane+worker) nodes run in a single Hetzner DC; mandatory for the Talos ARP-based VIP which cannot cross L3 DC boundaries.
+description: Three hybrid (control-plane+worker) nodes in a single Hetzner DC; mandatory for the Talos ARP-based VIP which cannot cross L3 DC boundaries.
 type: adr
 audience: [contributor, ai]
 tags: [adr, topology, hetzner, networking]

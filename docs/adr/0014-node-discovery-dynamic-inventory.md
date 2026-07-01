@@ -1,6 +1,6 @@
 ---
 title: "ADR-014: Node discovery via inventory, not filesystem IPC"
-description: Node addresses and roles flow through Ansible hostvars produced by dynamic/static inventory, replacing the legacy node_ips.yml filesystem IPC.
+description: Node addresses and roles flow through Ansible hostvars from dynamic/static inventory, replacing the legacy node_ips.yml filesystem IPC.
 type: adr
 audience: [contributor, ai]
 tags: [adr, ansible, inventory, networking]

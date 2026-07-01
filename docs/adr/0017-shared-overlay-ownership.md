@@ -1,6 +1,6 @@
 ---
 title: "ADR-017: Shared overlay ownership model across Talos and Flux"
-description: A three-tier overlay model (template base, user-global, per-cluster) applies to both Talos and Flux, each keeping its natural filesystem root.
+description: A three-tier overlay model (template base, user-global, per-cluster) applies to Talos and Flux, each keeping its natural filesystem root.
 type: adr
 audience: [contributor, ai]
 tags: [adr, talos, flux, architecture]

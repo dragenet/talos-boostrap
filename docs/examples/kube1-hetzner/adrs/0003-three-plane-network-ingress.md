@@ -1,6 +1,6 @@
 ---
 title: "ADR-003: Three-plane network ingress model"
-description: Traffic is split across three planes: public HTTPS via DNS-RR+Envoy, zero-trust HTTPS via cloudflared tunnel, and admin TCP/UDP via Tailscale.
+description: Traffic is split across three planes: public HTTPS via DNS-RR+Envoy, zero-trust via cloudflared tunnel, and admin TCP/UDP via Tailscale.
 type: adr
 audience: [contributor, ai]
 tags: [adr, networking, ingress, tailscale, envoy]

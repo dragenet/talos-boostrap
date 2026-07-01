@@ -1,6 +1,6 @@
 ---
 title: "ADR-016: Talos configuration boundary — Talos-shaped patches, Ansible as compiler"
-description: Human-authored Talos config must be Talos-shaped patch manifests; Ansible orchestrates but does not re-express Talos fields as a custom schema.
+description: Human-authored Talos config must be Talos-shaped patch manifests; Ansible orchestrates but never re-expresses Talos fields as custom schema.
 type: adr
 audience: [contributor, ai]
 tags: [adr, talos, config, architecture]
