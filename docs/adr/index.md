@@ -33,4 +33,4 @@ _ADR files will be populated in Step 2 of the docs rewrite. Numbers 0001–0017 
 
 ## How to write an ADR
 
-See [Writing ADRs](../contributing/writing-adrs.md).
+_Writing ADRs guide — see `contributing/writing-adrs.md` once created._

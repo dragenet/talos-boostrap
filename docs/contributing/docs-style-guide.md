@@ -85,7 +85,7 @@ When linking across sections, always use paths relative to the current file. Ver
 | `guides/` | Task-oriented how-to guides. Answer "how do I do X?" Steps are numbered. Imperative headings (e.g. "Install prerequisites"). |
 | `concepts/` | Explanation and understanding. Answer "what is X and why does it work this way?" Noun-phrase headings. No step-by-step tasks. |
 | `reference/` | Lookup tables, schemas, inventories, and glossaries. Answer "what are the exact values/options for X?" Tabular where possible. |
-| `adr/` | Architecture decision records for generic template decisions. See [Writing ADRs](writing-adrs.md). |
+| `adr/` | Architecture decision records for generic template decisions. See Writing ADRs (see `contributing/writing-adrs.md` once created). |
 | `contributing/` | Contributor workflow: dev setup, docs authoring, ADR process, CI, and working with AI agents. |
 | `examples/` | Concrete provider/instance worked examples. Each sub-folder is a self-contained reference for one real deployment. |
 
@@ -109,7 +109,7 @@ A lookup document. Contains tables, schemas, or enumerated options. Minimal pros
 
 ### `adr`
 
-An Architecture Decision Record. Records a decision, its context, considered alternatives, and consequences. Uses the standard ADR template (`status`, `date`, `context`, `decision`, `consequences`). See [Writing ADRs](writing-adrs.md).
+An Architecture Decision Record. Records a decision, its context, considered alternatives, and consequences. Uses the standard ADR template (`status`, `date`, `context`, `decision`, `consequences`). See Writing ADRs (see `contributing/writing-adrs.md` once created).
 
 ### `index`
 
