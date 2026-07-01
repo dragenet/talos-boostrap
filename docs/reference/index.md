@@ -4,7 +4,7 @@ description: Lookup tables, schemas, and glossary for the Talos Kubernetes boots
 type: index
 audience: [user, operator, ai]
 tags: [reference, schema, playbooks, glossary]
-status: draft
+status: stable
 created: 2026-07-01
 updated: 2026-07-01
 related:
@@ -26,4 +26,4 @@ Lookup documents for schemas, options, and definitions. Use these when you need 
 | [Inventory Contract](inventory-contract.md) | Required hostvars and groups that every provider inventory must supply |
 | [Glossary](glossary.md) | Definitions for terms used throughout the docs |
 
-_Pages listed above are coming in a later step._
+
