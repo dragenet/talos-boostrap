@@ -4,7 +4,7 @@ description: Contributor guides for the Talos Kubernetes bootstrap template — 
 type: index
 audience: [contributor, ai]
 tags: [contributing, development, docs]
-status: draft
+status: stable
 created: 2026-07-01
 updated: 2026-07-01
 related:
