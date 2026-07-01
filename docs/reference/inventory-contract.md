@@ -138,4 +138,4 @@ ansible-playbook playbooks/render-config.yml -e config_cluster=mycluster
 
 A new provider inventory satisfies the contract by exposing `node_public_ip`, `node_private_ip`, and `node_role` on every node host, and placing hosts in the correct `controlplane` / `hybrid` / `worker` groups. No changes to playbooks or roles are required.
 
-See `dev-docs/adding-a-provider.md` for the full operational checklist.
+See [Add a Provider](../guides/add-a-provider.md) for the full operational checklist.

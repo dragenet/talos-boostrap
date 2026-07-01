@@ -2,7 +2,7 @@
 
 This repo is a reusable Talos Linux Kubernetes cluster deployment template.
 
-`CLAUDE.md` is the canonical source for architecture, workflows, repo status, and engineering standards. This file is the short OpenCode-facing entrypoint.
+`docs/index.md` is the canonical source for architecture, workflows, repo status, and engineering standards. See `docs/contributing/index.md` and `docs/contributing/docs-style-guide.md` for authoring and workflow conventions. This file is the short OpenCode-facing entrypoint.
 
 ## Core Rules
 

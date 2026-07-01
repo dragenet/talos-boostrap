@@ -53,7 +53,7 @@ Install Ansible via your package manager or `pip`. The pre-commit hook uses the 
 | [`sops`](https://github.com/getsops/sops) | Encrypt and decrypt secrets |
 | [`age`](https://github.com/FiloSottile/age) | Key backend for SOPS (see `.sops.yaml`) |
 
-SOPS is configured to encrypt files matching `infra/ansible/inventories/*/group_vars/*.sops.yaml` using an `age` public key. You will need your own `age` key pair to read and write encrypted secrets.
+SOPS is configured to encrypt files matching `infra/ansible/inventories/*/group_vars/*.sops.yaml` or `infra/ansible/inventories/*/group_vars/*.sops.yml` using an `age` public key. You will need your own `age` key pair to read and write encrypted secrets.
 
 ### Local tools
 

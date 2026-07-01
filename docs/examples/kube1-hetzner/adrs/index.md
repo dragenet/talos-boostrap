@@ -9,12 +9,12 @@ created: 2026-07-01
 updated: 2026-07-01
 related:
   - ../index.md
-  - ../../adr/index.md
+  - ../../../adr/index.md
 ---
 
 # kube1 Hetzner — Architecture Decision Records
 
-This section logs Architecture Decision Records specific to the **kube1** Hetzner Cloud example cluster. These decisions are layered on top of the generic template ADRs (see [`docs/adr/`](../../adr/)) and capture Hetzner-specific choices around topology, networking, TLS, and storage.
+This section logs Architecture Decision Records specific to the **kube1** Hetzner Cloud example cluster. These decisions are layered on top of the generic template ADRs (see [generic template ADRs](../../../adr/index.md)) and capture Hetzner-specific choices around topology, networking, TLS, and storage.
 
 ## ADR Log
 

@@ -10,6 +10,11 @@ updated: 2026-07-01
 related:
   - ../index.md
   - docs-style-guide.md
+  - development-setup.md
+  - writing-adrs.md
+  - render-and-drift.md
+  - testing-and-precommit.md
+  - working-with-agents.md
 ---
 
 # Contributing

@@ -130,11 +130,9 @@ flux/
 
 ---
 
-## Other top-level directories
+## Supporting directories
 
 | Directory | Purpose |
 |---|---|
-| `dev-docs/` | Legacy design notes and ADRs from the original bootstrap design; kept for historical reference while `docs/` is built out |
-| `docs/` | Current user-facing documentation (concepts, guides, reference, ADRs) |
 | `.ai/` | Context files for AI-assisted development (not for human consumption) |
 | `.github/` | GitHub Actions CI workflows, including drift-detection for generated files |

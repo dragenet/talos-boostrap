@@ -31,6 +31,8 @@ After editing, re-run the config compiler to regenerate artifacts:
 ansible-playbook playbooks/render-config.yml -e config_cluster=<cluster-name>
 ```
 
+Run this from `infra/ansible/`, where `ansible.cfg` lives.
+
 ---
 
 ## Top-level sections
