@@ -22,11 +22,18 @@
 #
 # Gated on features.openebs — not emitted when openebs is disabled.
 #
-# EPHEMERAL must be capped before the raw volume is provisioned. Talos grows
-# EPHEMERAL to fill all remaining space by default, which leaves no free space
-# for RawVolumeConfig on 80GB CX33 disks. `maxSize: -22GiB` means “leave
-# 22 GiB free”, which is enough for the 20GB openebs-lvm raw partition once
-# partition alignment overhead is accounted for.
+# EPHEMERAL cap: emitted ONLY when at least one raw volume targets the system
+# disk (diskSelector == 'system_disk'). On a shared boot disk, Talos grows
+# EPHEMERAL to fill all remaining free space by default, which leaves no room
+# for the RawVolumeConfig partition. `maxSize: -22GiB` instructs Talos to leave
+# 22 GiB free (enough for a 20 GB raw partition after alignment overhead).
+#
+# When all raw volumes target a SEPARATE disk (diskSelector != 'system_disk'),
+# EPHEMERAL can grow to fill the entire system disk — no cap is needed or emitted.
+# This avoids unnecessarily reserving ~22 GiB of dead space on the system disk
+# when OpenEBS is backed by a dedicated second disk.
+{% set system_disk_vols = config_render_storage_raw_volumes | selectattr('diskSelector', 'equalto', 'system_disk') | list %}
+{% if system_disk_vols | length > 0 %}
 ---
 apiVersion: v1alpha1
 kind: VolumeConfig
@@ -34,6 +41,7 @@ name: EPHEMERAL
 provisioning:
   maxSize: -22GiB
   grow: false
+{% endif %}
 {% for vol in config_render_storage_raw_volumes %}
 ---
 apiVersion: v1alpha1
