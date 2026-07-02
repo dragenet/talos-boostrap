@@ -190,3 +190,23 @@ flux_bootstrap_flux_timeout: 10m
 # SOPS-backed inventory group vars (NOT a role default). The role references
 # this variable with | default('') so it safely evaluates to empty when the
 # SOPS file hasn't been created yet. Do not set it here.
+
+# --- Flux SOPS age key ---
+# A dedicated age key pair is generated for Flux's kustomize-controller so it
+# can decrypt SOPS-encrypted manifests stored under flux/ in the repo.
+# The private key is stored in this file (gitignored, in talos secrets dir)
+# and pushed to the cluster as the flux-system/sops-age Secret.
+# The public key is appended to .sops.yaml as the flux/ creation rule recipient.
+# Operators who want to encrypt flux/ manifests locally add their own public key
+# to that rule manually (comma-separated) — the bootstrap does not touch operator keys.
+
+# Path to the generated Flux age key pair file (gitignored).
+# Anchored to talos_secrets_dir so it lives alongside secrets.yaml and kubeconfig.
+flux_bootstrap_sops_age_key_file: "{{ talos_secrets_dir }}/flux-sops-age.key"
+
+# Repo root — three levels above the playbook directory.
+# playbook_dir = infra/ansible/playbooks → ../../.. = repo root.
+flux_bootstrap_repo_root: "{{ playbook_dir }}/../../.."
+
+# Runtime-populated after key generation/read — do not set manually.
+flux_bootstrap_sops_age_public_key: ""

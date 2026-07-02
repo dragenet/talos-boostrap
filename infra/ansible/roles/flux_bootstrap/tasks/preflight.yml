@@ -34,6 +34,15 @@
   changed_when: false
   failed_when: flux_bootstrap_preflight_helm.rc != 0
 
+- name: Check age-keygen is available (required for Flux SOPS key generation)
+  ansible.builtin.command:
+    argv:
+      - age-keygen
+      - --version
+  register: flux_bootstrap_preflight_age_keygen
+  changed_when: false
+  failed_when: flux_bootstrap_preflight_age_keygen.rc != 0
+
 # --- Required variable assertions ---
 
 # flux_repo_url is NOT checked here — it lives in preflight_flux.yml so a

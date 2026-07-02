@@ -35,3 +35,6 @@
 
 - name: Bootstrap Flux from git repository
   ansible.builtin.include_tasks: flux.yml
+
+- name: Create Flux SOPS age key, push sops-age Secret, update .sops.yaml
+  ansible.builtin.include_tasks: sops_age.yml

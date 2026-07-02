@@ -1,0 +1,93 @@
+---
+# Create the Flux in-cluster SOPS age key and register it in .sops.yaml.
+#
+# Pipeline:
+#   1. Generate a dedicated age key pair for Flux kustomize-controller
+#      (idempotent — creates: guard skips if the key file already exists).
+#   2. Extract the public key from the key file.
+#   3. Create / idempotently reconcile the sops-age Secret in flux-system
+#      so kustomize-controller can decrypt SOPS-encrypted flux/ manifests.
+#   4. Append a flux/ creation rule to .sops.yaml containing only the Flux
+#      key as recipient (idempotent — skipped when the key is already present).
+#      Operators who need to encrypt flux/ manifests locally add their own
+#      public age key manually (comma-separated) to that rule.
+#
+# The operator age key(s) in .sops.yaml are managed entirely by hand —
+# this task never reads, modifies, or removes the inventories/ rule.
+#
+# All tasks touching raw private key material use no_log: true.
+
+# ── Key generation ────────────────────────────────────────────────────────────
+
+- name: Generate Flux SOPS age key pair
+  ansible.builtin.command:
+    argv:
+      - age-keygen
+      - --output
+      - "{{ flux_bootstrap_sops_age_key_file }}"
+    creates: "{{ flux_bootstrap_sops_age_key_file }}"
+  # age-keygen writes the private key to the file; the public key is printed
+  # to stderr only, so nothing sensitive appears in Ansible output.
+
+- name: Restrict permissions on Flux age key file
+  ansible.builtin.file:
+    path: "{{ flux_bootstrap_sops_age_key_file }}"
+    mode: "0600"
+
+- name: Read Flux SOPS age key file
+  ansible.builtin.slurp:
+    src: "{{ flux_bootstrap_sops_age_key_file }}"
+  register: _flux_bootstrap_sops_age_key_raw
+  no_log: true
+
+- name: Extract Flux SOPS age public key from key file
+  ansible.builtin.set_fact:
+    # age-keygen writes the public key as a comment on the first line:
+    #   # public key: age1<base32>
+    # regex_search with a capture group returns a list; | first unwraps it.
+    flux_bootstrap_sops_age_public_key: >-
+      {{ _flux_bootstrap_sops_age_key_raw.content | b64decode
+         | regex_search('# public key: (age1\S+)', '\1') | first }}
+  # The public key is not sensitive — no_log not needed.
+
+# ── In-cluster sops-age Secret ────────────────────────────────────────────────
+
+- name: Create sops-age Secret in flux-system
+  kubernetes.core.k8s:
+    kubeconfig: "{{ flux_bootstrap_kubeconfig }}"
+    state: present
+    apply: true
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: sops-age
+        namespace: flux-system
+      stringData:
+        # kustomize-controller expects the key under 'age.agekey'.
+        # https://fluxcd.io/flux/guides/mozilla-sops/
+        age.agekey: "{{ _flux_bootstrap_sops_age_key_raw.content | b64decode }}"
+  no_log: true
+
+# ── .sops.yaml — add flux/ creation rule ─────────────────────────────────────
+# Read the current file to check idempotency before writing.
+
+- name: Read current .sops.yaml
+  ansible.builtin.slurp:
+    src: "{{ flux_bootstrap_repo_root }}/.sops.yaml"
+  register: _flux_bootstrap_sops_yaml_raw
+
+- name: Append flux/ SOPS creation rule with Flux age key
+  ansible.builtin.blockinfile:
+    path: "{{ flux_bootstrap_repo_root }}/.sops.yaml"
+    marker: "  # {mark} ANSIBLE MANAGED — flux_bootstrap sops-age key"
+    insertafter: EOF
+    block: "  - path_regex: 'flux/.*\\.sops\\.ya?ml$'\n    age: >-\n      {{ flux_bootstrap_sops_age_public_key }}"
+  when: >-
+    flux_bootstrap_sops_age_public_key not in
+    (_flux_bootstrap_sops_yaml_raw.content | b64decode)
+  # Idempotent: skipped when the Flux public key is already in the file.
+  # The blockinfile markers are YAML comments indented at 2 spaces, which is
+  # valid inside the creation_rules: sequence — SOPS ignores them.
+  # On key rotation: delete the old block (the two marker lines + content) by
+  # hand and re-run bootstrap-flux.yml to insert the new key.
