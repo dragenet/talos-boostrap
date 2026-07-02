@@ -1,6 +1,21 @@
 ---
 creation_rules:
+  # Ansible inventory secrets (group_vars/*.sops.yaml for any provider).
+  # To grant an operator encrypt/decrypt access, add their public age key
+  # as a comma-separated entry on a new indented line, e.g.:
+  #   age: >-
+  #     age1existing...,
+  #     age1newoperator...
+  # The regex stays generic so adding a second provider needs no edit here.
   - path_regex: infra/ansible/inventories/.*/group_vars/.*\.sops\.ya?ml$
-    age: age1msj34ws4vhrdtdew6tt65f76mvfacegs06dvxr8wfghs3hfh6eqqkax93f
-# Note: the regex stays generic (matches any provider's group_vars/<provider>.sops.yaml,
-# e.g. hcloud.sops.yaml) so adding a second provider's secrets later needs no edit here.
+    age: >-
+      age17uwzmml9zswwz5h6zp6asuntvrr0dx26qgdv09j62ea96ykeg9fsufqzdq
+
+  # Flux-managed secrets in flux/.
+  # The Flux kustomize-controller in-cluster key is added automatically by
+  # bootstrap-flux.yml. Operators who need to encrypt flux/ manifests locally
+  # must also add their public age key here (comma-separated after the Flux key):
+  #   age: >-
+  #     age1flux...,
+  #     age1operator...
+  # bootstrap-flux.yml populates this block — do not edit the Flux key line.
