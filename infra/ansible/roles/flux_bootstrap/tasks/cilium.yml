@@ -18,6 +18,14 @@
 # or release state differ. check_mode is supported — the module reports
 # whether changes would occur without applying them.
 
+- name: Add Cilium Helm repository
+  kubernetes.core.helm_repository:
+    name: "{{ flux_bootstrap_cilium_chart_name }}"
+    repo_url: "{{ flux_bootstrap_cilium_chart_repo_url }}"
+    state: present
+  # Idempotent — no-op if the repo is already registered. Ensures helm repo
+  # update succeeds even on a fresh Helm install with no prior repositories.
+
 - name: Install or upgrade Cilium Helm release
   kubernetes.core.helm:
     kubeconfig: "{{ flux_bootstrap_kubeconfig }}"
