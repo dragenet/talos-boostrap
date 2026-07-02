@@ -49,7 +49,7 @@ kind: RawVolumeConfig
 name: {{ vol.name }}
 provisioning:
   diskSelector:
-    match: {{ vol.diskSelector }}
+    match: '{{ vol.diskSelector }}'
   minSize: {{ vol.minSize }}
   maxSize: {{ vol.maxSize }}
 {% endfor %}
