@@ -153,6 +153,8 @@ See `config/defaults/cluster.yaml` and [ADR-015](../adr/0015-flux-bootstrap-auth
 
 ---
 
+See [ADR-018](../adr/0018-flux-entrypoint-subdirectories.md) for the `flux/clusters/<cluster>/infrastructure/` and `apps/` entrypoint subdirectory convention.
+
 ## The Render Cycle
 
 After editing `cluster.yaml` or `nodes.yaml`, run the render playbook from `infra/ansible/` to compile your inputs:

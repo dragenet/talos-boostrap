@@ -1,6 +1,6 @@
 # flux/apps
 
-Per-app Flux reconciliation units. Each application gets its own `flux/apps/<app>/` directory and its own flat Flux `Kustomization` CR at `flux/clusters/<cluster>/<app>.yaml`. Apps reconcile independently — there is no aggregate `apps` root.
+Per-app Flux reconciliation units. Each application gets its own `flux/apps/<app>/` directory and its own flat Flux `Kustomization` CR at `flux/clusters/<cluster>/apps/<app>.yaml`. Apps reconcile independently — there is no aggregate `apps` root.
 
 ## Per-app directory layout
 
@@ -36,7 +36,7 @@ This follows the four-tier overlay ownership model from ADR-017:
 
 2. Create the four `kustomization.yaml` files following the chain above.
 
-3. Create the cluster entrypoint CR at `flux/clusters/<cluster>/<app>.yaml`:
+3. Create the cluster entrypoint CR at `flux/clusters/<cluster>/apps/<app>.yaml`:
 
    ```yaml
    apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -59,7 +59,7 @@ This follows the four-tier overlay ownership model from ADR-017:
 
 4. Add workload manifests (e.g. `HelmRelease`, `Deployment`, `Service`) under `base/`.
 
-The cluster-root directory (`flux/clusters/<cluster>/`) is auto-swept by Flux — placing the CR there is sufficient for Flux to discover and reconcile it. No `kustomization.yaml` is needed at that level.
+The per-app directory `flux/clusters/<cluster>/apps/` is auto-swept recursively by Flux — placing the CR there is sufficient for Flux to discover and reconcile it. No `kustomization.yaml` is needed at that level.
 
 ## Why per-app instead of aggregate
 

@@ -6,13 +6,14 @@ audience: [user, operator]
 tags: [flux, gitops, kubernetes]
 status: stable
 created: 2026-07-01
-updated: 2026-07-01
+updated: 2026-07-03
 related:
   - getting-started.md
   - configure-your-cluster.md
   - ../concepts/gitops-model.md
   - ../adr/0006-fluxcd-gitops.md
   - ../adr/0012-feature-catalog.md
+  - ../adr/0018-flux-entrypoint-subdirectories.md
 ---
 
 # GitOps with Flux
@@ -25,15 +26,18 @@ For a conceptual overview of how Flux manages the cluster, see [GitOps Model](..
 
 ## How Flux Watches the Repo
 
-The cluster entrypoint is `flux/clusters/<cluster-name>/`. It contains two `Kustomization` resources that define the reconciliation order:
+The cluster entrypoint is `flux/clusters/<cluster-name>/`. Its `flux-system` `Kustomization` (written by `flux bootstrap`) is rooted at `path: ./flux/clusters/<cluster-name>` and auto-sweeps the directory recursively. Inside the cluster root, reconciliation is organized into two subdirectories:
+
+- `infrastructure/` — the `infrastructure/core.yaml` pair of `Kustomization` CRs (`infrastructure-controllers` + `infrastructure-configs`) plus any additional standalone `Kustomization` CRs (e.g. `infrastructure/<name>.yaml` for cluster-specific infrastructure such as DNS). See [ADR-018](../adr/0018-flux-entrypoint-subdirectories.md).
+- `apps/` — one `<app>.yaml` `Kustomization` CR per application, each `dependsOn: [infrastructure-configs]` and pointing `path` at `./flux/apps/<app>`.
 
 ```
-infrastructure-controllers  →  infrastructure-configs
+infrastructure-controllers  →  infrastructure-configs  →  apps/<app>
 ```
 
-`infrastructure-controllers` reconciles everything under `flux/infrastructure/controllers/` — cert-manager, ingress controllers, OpenEBS, and other catalog components. `infrastructure-configs` depends on it and reconciles `flux/infrastructure/configs/`.
+`infrastructure-controllers` reconciles everything under `flux/infrastructure/controllers/` — cert-manager, ingress controllers, OpenEBS, and other catalog components. `infrastructure-configs` depends on it and reconciles `flux/infrastructure/configs/`. Additional `infrastructure/<name>.yaml` files declare their own `dependsOn` chains (typically `[infrastructure-configs]`).
 
-Both kustomizations set `prune: true` — resources removed from git are removed from the cluster. Infrastructure layers set `wait: true` so dependent layers do not start reconciling until their dependencies are healthy.
+All kustomizations set `prune: true` — resources removed from git are removed from the cluster. Infrastructure layers set `wait: true` so dependent layers do not start reconciling until their dependencies are healthy.
 
 > **Do not hand-edit `flux/clusters/<cluster-name>/flux-system/`.** That directory is owned by `flux bootstrap` and is regenerated on every re-bootstrap.
 
@@ -64,7 +68,11 @@ flux/
   clusters/
     <cluster-name>/
       flux-system/             # owned by flux bootstrap — do not edit
-      infrastructure.yaml
+      infrastructure/
+        core.yaml              # infrastructure-controllers + infrastructure-configs
+        <name>.yaml            # additional standalone infrastructure Kustomizations
+      apps/
+        <app>.yaml             # per-app Flux Kustomization CRs (one per app)
 ```
 
 ---
@@ -280,3 +288,4 @@ Shows the diff between the current cluster state and what Flux would apply on th
 - [Configure Your Cluster](configure-your-cluster.md) — changing cluster settings, enabling features, the render cycle
 - [ADR-006: FluxCD for GitOps](../adr/0006-fluxcd-gitops.md)
 - [ADR-012: Feature Catalog](../adr/0012-feature-catalog.md)
+- [ADR-018: Flux entrypoint subdirectories](../adr/0018-flux-entrypoint-subdirectories.md)

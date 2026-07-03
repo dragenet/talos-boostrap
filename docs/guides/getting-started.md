@@ -207,7 +207,7 @@ flux get all
 kubectl -n flux-system get pods
 ```
 
-What to expect: Flux watches `flux/clusters/<cluster-name>/` and reconciles the `infrastructure-controllers` and `infrastructure-configs` kustomizations defined there. On first bootstrap, Flux detects the pre-installed Cilium and CCM Helm releases and adopts them without reinstalling.
+What to expect: Flux watches `flux/clusters/<cluster-name>/` and reconciles the `infrastructure-controllers` and `infrastructure-configs` kustomizations defined under `flux/clusters/<cluster-name>/infrastructure/`. Additional cluster-specific infrastructure Kustomizations live in the same `infrastructure/` subdirectory, and per-app Kustomizations live under `flux/clusters/<cluster-name>/apps/`. On first bootstrap, Flux detects the pre-installed Cilium and CCM Helm releases and adopts them without reinstalling.
 
 ---
 

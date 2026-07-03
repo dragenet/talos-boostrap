@@ -41,6 +41,7 @@ For instance-specific ADRs (e.g. for the kube1 Hetzner example), see [examples/k
 | [0015](0015-flux-bootstrap-auth.md) | ADR-015: Flux bootstrap authentication modes and secret persistence | accepted |
 | [0016](0016-talos-config-boundary.md) | ADR-016: Talos configuration boundary — Talos-shaped patches, Ansible as compiler | accepted |
 | [0017](0017-shared-overlay-ownership.md) | ADR-017: Shared overlay ownership model across Talos and Flux | accepted |
+| [0018](0018-flux-entrypoint-subdirectories.md) | ADR-018: Flux cluster entrypoint subdirectories | accepted |
 
 ## How to write an ADR
 
